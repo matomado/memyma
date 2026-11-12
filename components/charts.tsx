@@ -190,7 +190,7 @@ export function LineChart({
   const H = 180;
   const pad = { l: 34, r: 34, t: 12, b: 22 };
   const all = data.flatMap((d) => series.map((s) => d.values[s.key])).filter((v): v is number => v != null);
-  const lo = Math.floor((Math.min(...all) - 5) / 10) * 10;
+  const lo = Math.max(0, Math.floor((Math.min(...all) - 5) / 10) * 10);
   const hi = Math.ceil((Math.max(...all) + 5) / 10) * 10;
   const iw = width - pad.l - pad.r;
   const ih = H - pad.t - pad.b;

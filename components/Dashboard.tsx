@@ -5,6 +5,7 @@ import { WORKOUT_TYPES, typeInfo, type Category, type Workout } from "@/lib/type
 import { fmtDuration, fmtNum, todayStr } from "@/lib/format";
 import { Legend, LineChart, StackedBars } from "./charts";
 import { WorkoutRow } from "./WorkoutList";
+import { allExerciseNames, exerciseHistory, summarizeSets, topWeight, volume } from "@/lib/exercise";
 
 // 카테고리 색 슬롯은 운동 종류에 고정 (필터해도 색이 바뀌지 않음)
 const SERIES = WORKOUT_TYPES.map((t, i) => ({ key: t.id, label: t.short, color: `var(--series-${i + 1})` }));
@@ -161,6 +162,8 @@ export default function Dashboard({
         </section>
       )}
 
+      {filter !== "swim" && <ExerciseProgress workouts={workouts} />}
+
       <section className="space-y-2">
         <h2 className="muted text-sm font-semibold">최근 기록</h2>
         {list.slice(0, 3).map((w) => (
@@ -177,6 +180,67 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="card p-3">
       <div className="muted text-xs">{label}</div>
       <div className="mt-0.5 text-xl font-bold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function ExerciseProgress({ workouts }: { workouts: Workout[] }) {
+  const names = useMemo(() => allExerciseNames(workouts), [workouts]);
+  const [picked, setPicked] = useState<string | null>(null);
+  const name = picked && names.includes(picked) ? picked : names[0];
+  if (!name) return null;
+
+  const hist = exerciseHistory(workouts, name).slice(0, 20).reverse();
+  const points = hist
+    .map(({ workout, exercise }) => {
+      const [, m, d] = workout.date.split("-").map(Number);
+      return {
+        axis: `${m}/${d}`,
+        label: `${m}/${d} ${typeInfo(workout.type).short} · ${summarizeSets(exercise.sets)}`,
+        values: { top: topWeight(exercise) },
+      };
+    })
+    .filter((p) => p.values.top != null);
+  const latest = hist[hist.length - 1];
+  const best = Math.max(...hist.map((h) => topWeight(h.exercise) ?? 0));
+
+  return (
+    <section className="card space-y-3 p-4">
+      <h2 className="text-sm font-semibold">종목별 성장</h2>
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        {names.map((n) => (
+          <button key={n} className="chip shrink-0 text-xs" aria-pressed={n === name} onClick={() => setPicked(n)}>
+            {n}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <MiniStat label="기록 횟수" value={`${hist.length}회`} />
+        <MiniStat label="최고 무게" value={best > 0 ? `${best}kg` : "맨몸"} />
+        <MiniStat
+          label="최근 볼륨"
+          value={latest ? `${Math.round(volume(latest.exercise)).toLocaleString("ko-KR")}kg` : "–"}
+        />
+      </div>
+      {points.length >= 2 ? (
+        <>
+          <p className="muted text-xs">회차별 최고 무게 (kg)</p>
+          <LineChart data={points} unit="kg" series={[{ key: "top", label: "최고 무게", color: "var(--series-1)" }]} />
+        </>
+      ) : (
+        <p className="faint text-xs">
+          {latest ? `최근: ${summarizeSets(latest.exercise.sets)} · ` : ""}두 번 이상 기록하면 그래프가 나와요.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl p-2" style={{ background: "var(--surface-2)" }}>
+      <div className="faint text-[11px]">{label}</div>
+      <div className="text-sm font-bold tabular-nums">{value}</div>
     </div>
   );
 }

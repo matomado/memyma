@@ -10,7 +10,9 @@
   - 읽은 값은 저장 전에 직접 고칠 수 있음
   - AI 분석: 요약, 강도, 눈에 띄는 점, **최근 같은 종류 운동과 비교**, 다음 운동 제안
   - 캡처 없이 수치만 입력해도 분석 가능
-- **요약**: 이번 달 횟수·시간·칼로리·수영 거리, 주별 운동 시간(종류별 누적 막대), 운동별 평균/최대 심박 추이
+- **헬스 종목·세트 기록** (PT / 개인운동): 종목 이름(자동완성), 세트별 무게·횟수, 직전 세트 복사,
+  "지난번 종목 불러오기", 종목마다 지난번 기록 표시, 총 볼륨 계산. AI 분석도 무게·볼륨 변화를 보고 다음 목표를 제안
+- **요약**: 이번 달 횟수·시간·칼로리·수영 거리, 주별 운동 시간(종류별 누적 막대), 운동별 평균/최대 심박 추이, **종목별 성장**(회차별 최고 무게 그래프)
 - **기록**: 월별 목록, 수영/헬스 필터, 상세 화면(지난번 대비 변화, 심박 영역 막대)
 - **설정**: JSON 백업 내보내기/불러오기, 앱 암호
 
@@ -25,9 +27,21 @@ cp .env.example .env.local   # ANTHROPIC_API_KEY 입력
 npm run dev                  # http://localhost:3000
 ```
 
-아이폰에서 쓰려면 Vercel 등에 배포한 뒤 Safari → 공유 → **홈 화면에 추가** 하면 앱처럼 쓸 수 있어요.
-배포할 때는 환경변수 `ANTHROPIC_API_KEY`와, 남이 내 키를 쓰지 못하게 `APP_PASSCODE`도 설정하고
-앱의 **설정 → 앱 암호**에 같은 값을 넣어 주세요.
+## Vercel 배포
+
+1. **Claude API 키 만들기** – https://console.anthropic.com → 결제 정보(크레딧) 등록 → API Keys → Create Key (`sk-ant-...` 복사)
+2. **코드를 main 브랜치에 합치기** – Vercel은 기본적으로 `main` 브랜치를 배포해요.
+   GitHub에서 이 브랜치로 Pull Request를 만들어 merge 하세요.
+3. **Vercel 프로젝트 만들기** – https://vercel.com 에 GitHub 계정으로 로그인 → **Add New… → Project** →
+   `memyma` 저장소 **Import** (목록에 없으면 *Adjust GitHub App Permissions*에서 저장소 접근 허용)
+4. **환경변수 넣기** – Import 화면의 *Environment Variables*에 추가
+   - `ANTHROPIC_API_KEY` = 1번에서 만든 키
+   - `APP_PASSCODE` = 아무 암호 (남이 내 키로 분석하지 못하게)
+5. **Deploy** 클릭 → 1~2분 뒤 `https://memyma-xxxx.vercel.app` 주소가 나와요.
+6. 아이폰 Safari로 접속 → **설정 → 앱 암호**에 `APP_PASSCODE`와 같은 값 저장 → 공유 버튼 → **홈 화면에 추가**
+
+이후에는 main에 새 코드가 합쳐질 때마다 자동으로 다시 배포돼요.
+환경변수를 나중에 바꿨다면 Vercel의 *Deployments → 최신 배포 → Redeploy*를 눌러야 반영돼요.
 
 ## 구조
 

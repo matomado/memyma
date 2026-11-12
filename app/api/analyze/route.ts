@@ -4,7 +4,7 @@ import { z } from "zod";
 import { WORKOUT_TYPES, type AnalyzeRequest, type AnalyzeResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const num = z.number().nullable();
 
@@ -57,6 +57,8 @@ const SYSTEM = `너는 애플워치 운동 기록을 읽고 분석해 주는 운
 2. analysis는 친근한 한국어 존댓말로, 수치를 근거로 짧고 구체적으로 쓴다.
    - 심박 영역 분포, 평균/최대 심박, 시간 대비 칼로리, (수영) 거리·페이스를 해석한다.
    - 강습/PT는 코치가 강도를 정하므로 "꾸준함"과 회복 관점, 자유수영/개인운동은 스스로 조절한 강도 관점으로 본다.
+   - 헬스 종목·세트 기록이 있으면 종목 구성(부위 균형), 무게·횟수·총 볼륨을 함께 본다.
+     최근 기록에 같은 종목이 있으면 무게/횟수 변화(점진적 과부하)를 짚어 주고, 다음에 시도할 무게나 횟수를 구체적으로 제안한다.
    - 최근 기록이 주어지면 comparison에 변화(늘었다/줄었다)를 숫자로 적는다.
    - 의학적 진단은 하지 않는다.`;
 
@@ -81,7 +83,7 @@ export async function POST(req: Request) {
   const typeLabel = WORKOUT_TYPES.find((w) => w.id === body.type)?.label;
   if (!typeLabel) return Response.json({ error: "운동 종류를 골라 주세요." }, { status: 400 });
   const images = (body.images ?? []).slice(0, 6);
-  if (images.length === 0 && !body.metrics) {
+  if (images.length === 0 && !body.metrics && !body.exercises?.length) {
     return Response.json({ error: "캡처 이미지나 수치를 넣어 주세요." }, { status: 400 });
   }
 
@@ -96,6 +98,7 @@ export async function POST(req: Request) {
       `운동 종류: ${typeLabel}`,
       body.memo?.trim() ? `사용자 메모:\n${body.memo.trim()}` : "사용자 메모: 없음",
       body.metrics ? `직접 입력한 수치(JSON):\n${JSON.stringify(body.metrics)}` : "",
+      body.exercises?.length ? `오늘 한 종목·세트:\n${body.exercises.map((x) => `- ${x}`).join("\n")}` : "",
       body.recent?.length
         ? `최근 같은 종류 운동 기록(JSON, 최신순):\n${JSON.stringify(body.recent)}`
         : "최근 같은 종류 운동 기록: 없음",

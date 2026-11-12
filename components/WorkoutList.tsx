@@ -26,6 +26,8 @@ export function WorkoutRow({ w, onOpen }: { w: Workout; onOpen: (id: string) => 
             m.active_kcal != null && `${fmtNum(m.active_kcal)} kcal`,
             m.avg_hr != null && `평균 ${fmtNum(m.avg_hr)} bpm`,
             m.distance_m != null && `${fmtNum(m.distance_m)} m`,
+            !!w.exercises?.length &&
+              (w.exercises.length > 1 ? `${w.exercises[0].name} 외 ${w.exercises.length - 1}종목` : w.exercises[0].name),
           ]
             .filter(Boolean)
             .join(" · ")}

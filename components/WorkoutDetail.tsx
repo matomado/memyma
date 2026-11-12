@@ -4,6 +4,7 @@ import { typeInfo, type Workout } from "@/lib/types";
 import { fmtDate, fmtDuration, fmtNum, fmtPace } from "@/lib/format";
 import AnalysisCard from "./AnalysisCard";
 import { ZoneBars } from "./charts";
+import { exerciseHistory, summarizeSets, topWeight, totalReps, volume } from "@/lib/exercise";
 
 export default function WorkoutDetail({
   workout: w,
@@ -68,6 +69,45 @@ export default function WorkoutDetail({
           </div>
         ))}
       </div>
+
+      {!isSwim && !!w.exercises?.length && (
+        <section className="card space-y-3 p-4">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold">종목 · 세트</h2>
+            <span className="faint text-xs">
+              {w.exercises.length}종목 · {w.exercises.reduce((s, e) => s + e.sets.length, 0)}세트 · 총 볼륨{" "}
+              {Math.round(w.exercises.reduce((s, e) => s + volume(e), 0)).toLocaleString("ko-KR")}kg
+            </span>
+          </div>
+          <ul className="space-y-2.5">
+            {w.exercises.map((e) => {
+              const prevEx = exerciseHistory(workouts.slice(idx + 1), e.name)[0]?.exercise;
+              const tw = topWeight(e);
+              const pw = prevEx ? topWeight(prevEx) : null;
+              const v = volume(e);
+              return (
+                <li key={e.id} className="space-y-0.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-semibold">{e.name}</span>
+                    <span className="faint shrink-0 text-xs tabular-nums">
+                      {v > 0 ? `볼륨 ${Math.round(v).toLocaleString("ko-KR")}kg` : `${totalReps(e)}회`}
+                    </span>
+                  </div>
+                  <div className="muted text-sm">{summarizeSets(e.sets)}</div>
+                  {prevEx && (
+                    <div className="faint text-xs">
+                      지난번 {summarizeSets(prevEx.sets)}
+                      {tw != null && pw != null && tw !== pw && (
+                        <span> · 최고 무게 {tw > pw ? "▲" : "▼"} {Math.abs(Math.round((tw - pw) * 10) / 10)}kg</span>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {m.hr_zones && (
         <section className="card space-y-2 p-4">

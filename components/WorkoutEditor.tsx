@@ -7,6 +7,7 @@ import {
   typeInfo,
   type Analysis,
   type AnalyzeRequest,
+  type Exercise,
   type AnalyzeResponse,
   type HrZones,
   type Metrics,
@@ -16,7 +17,9 @@ import {
 import { todayStr, uid } from "@/lib/format";
 import { fileToJpegBase64 } from "@/lib/image";
 import { getPasscode } from "@/lib/storage";
+import { cleanExercises, summarizeSets } from "@/lib/exercise";
 import AnalysisCard from "./AnalysisCard";
+import ExerciseEditor from "./ExerciseEditor";
 
 interface Shot {
   id: string;
@@ -39,6 +42,7 @@ export default function WorkoutEditor({
   const [date, setDate] = useState(initial?.date ?? todayStr());
   const [startTime, setStartTime] = useState(initial?.startTime ?? "");
   const [memo, setMemo] = useState(initial?.memo ?? "");
+  const [exercises, setExercises] = useState<Exercise[]>(initial?.exercises ?? []);
   const [metrics, setMetrics] = useState<Metrics>(initial?.metrics ?? emptyMetrics());
   const [analysis, setAnalysis] = useState<Analysis | null>(initial?.analysis ?? null);
   const [shots, setShots] = useState<Shot[]>([]);
@@ -49,6 +53,12 @@ export default function WorkoutEditor({
   useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), [shots]);
 
   const isSwim = typeInfo(type).category === "swim";
+  const others = workouts.filter((w) => w.id !== initial?.id);
+  const lastSameType =
+    others.find((w) => w.type === type && w.exercises?.length) ??
+    others.find((w) => typeInfo(w.type).category === "gym" && w.exercises?.length);
+  const exLines = (list: Exercise[] | undefined) =>
+    cleanExercises(list ?? []).map((e) => `${e.name}: ${summarizeSets(e.sets)}`);
   const set = <K extends keyof Metrics>(k: K, v: Metrics[K]) => setMetrics((m) => ({ ...m, [k]: v }));
 
   function addFiles(files: FileList | null) {
@@ -78,12 +88,14 @@ export default function WorkoutEditor({
           avg_hr: w.metrics.avg_hr,
           max_hr: w.metrics.max_hr,
           distance_m: w.metrics.distance_m,
+          exercises: isSwim ? undefined : exLines(w.exercises),
         }));
       const payload: AnalyzeRequest = {
         type,
         memo,
         images,
         metrics: images.length === 0 && hasMetrics ? metrics : undefined,
+        exercises: isSwim ? undefined : exLines(exercises),
         recent,
         today: todayStr(),
       };
@@ -123,13 +135,17 @@ export default function WorkoutEditor({
       startTime: startTime || null,
       memo,
       metrics,
+      exercises: isSwim ? undefined : cleanExercises(exercises),
       analysis,
       createdAt: initial?.createdAt ?? now,
       updatedAt: now,
     });
   }
 
-  const canAnalyze = shots.length > 0 || Object.values(metrics).some((v) => v != null);
+  const canAnalyze =
+    shots.length > 0 ||
+    Object.values(metrics).some((v) => v != null) ||
+    (!isSwim && cleanExercises(exercises).length > 0);
 
   return (
     <div className="space-y-5">
@@ -170,6 +186,16 @@ export default function WorkoutEditor({
           />
         </Field>
       </section>
+
+      {!isSwim && (
+        <ExerciseEditor
+          value={exercises}
+          onChange={setExercises}
+          workouts={workouts}
+          currentId={initial?.id}
+          lastSameType={lastSameType}
+        />
+      )}
 
       <section className="card space-y-3 p-4">
         <div>
@@ -221,14 +247,14 @@ export default function WorkoutEditor({
             placeholder={
               isSwim
                 ? "예: 자유형 위주, 접영 드릴 / 오늘 숨이 좀 찼음"
-                : "예: 하체 – 스쿼트 60kg 5x5, 레그프레스 / 컨디션 좋음"
+                : "예: 오늘 하체 날, 무릎 컨디션 좋음 / 트레이너가 자세 교정해 줌"
             }
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
           />
         </Field>
         <button className="btn btn-primary w-full" disabled={!canAnalyze || busy} onClick={analyze}>
-          {busy ? "분석 중… (20~40초)" : shots.length ? "✨ 캡처 읽고 분석하기" : "✨ 입력한 수치로 분석하기"}
+          {busy ? "분석 중… (20~40초)" : shots.length ? "✨ 캡처 읽고 분석하기" : "✨ 입력한 기록으로 분석하기"}
         </button>
         {error && (
           <p className="text-sm" style={{ color: "var(--danger)" }} role="alert">

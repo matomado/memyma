@@ -58,6 +58,17 @@ export interface Analysis {
   unreadable: string[];
 }
 
+export interface ExerciseSet {
+  weight_kg: number | null; // 맨몸이면 null
+  reps: number | null;
+}
+
+export interface Exercise {
+  id: string;
+  name: string;
+  sets: ExerciseSet[];
+}
+
 export interface Workout {
   id: string;
   date: string; // YYYY-MM-DD
@@ -65,6 +76,8 @@ export interface Workout {
   type: WorkoutType;
   metrics: Metrics;
   memo: string;
+  /** 헬스 종목별 세트 기록 (수영은 비어 있음) */
+  exercises?: Exercise[];
   analysis: Analysis | null;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +108,7 @@ export interface RecentSummary {
   avg_hr: number | null;
   max_hr: number | null;
   distance_m: number | null;
+  exercises?: string[];
 }
 
 export interface AnalyzeRequest {
@@ -103,6 +117,8 @@ export interface AnalyzeRequest {
   images: { media_type: "image/jpeg" | "image/png"; data: string }[];
   /** 이미 입력돼 있는 값(캡처 없이 직접 입력한 경우 분석만 받기 위해) */
   metrics?: Metrics;
+  /** 헬스 종목 기록 요약 (예: "스쿼트: 60kg×5 ×3세트") */
+  exercises?: string[];
   recent: RecentSummary[];
   today: string;
 }
