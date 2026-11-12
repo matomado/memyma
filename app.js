@@ -11,7 +11,7 @@
     form: $('#add-form'), title: $('#title'), priority: $('#priority'), due: $('#due'), tag: $('#tag'),
     tagList: $('#tag-list'), tabs: $('#tabs'), search: $('#search'), tagFilter: $('#tag-filter'),
     sort: $('#sort'), list: $('#list'), empty: $('#empty'), stats: $('#stats'), today: $('#today'),
-    tpl: $('#item-tpl'), clearDone: $('#clear-done'), exportBtn: $('#export'), importInput: $('#import'),
+    tpl: $('#item-tpl'), toast: $('#toast'), clearDone: $('#clear-done'), exportBtn: $('#export'), importInput: $('#import'),
   };
 
   const state = { view: 'all', query: '', tag: '', sort: 'smart' };
@@ -160,6 +160,21 @@
     els.tagFilter.value = state.tag;
   }
 
+  // ---------- toast (with optional undo) ----------
+  let toastTimer;
+  function toast(msg, undo) {
+    els.toast.replaceChildren(span(msg));
+    if (undo) {
+      const b = document.createElement('button');
+      b.textContent = '되돌리기';
+      b.addEventListener('click', () => { undo(); els.toast.hidden = true; });
+      els.toast.append(b);
+    }
+    els.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { els.toast.hidden = true; }, 6000);
+  }
+
   // ---------- inline title editing ----------
   function startEdit(titleEl, id) {
     titleEl.contentEditable = 'true';
@@ -202,7 +217,9 @@
     if (e.target.closest('.status')) {
       update(id, { status: STATUS[(STATUS.indexOf(t.status) + 1) % STATUS.length] });
     } else if (e.target.closest('.del')) {
-      if (confirm(`"${t.title}" 항목을 삭제할까요?`)) remove(id);
+      const snapshot = tasks.slice();
+      remove(id);
+      toast(`"${t.title}" 삭제됨`, () => { tasks = snapshot; commit(); });
     } else if (e.target.closest('.note-btn')) {
       const note = li.querySelector('.note');
       note.hidden = !note.hidden;
@@ -240,14 +257,19 @@
   els.clearDone.addEventListener('click', () => {
     const n = tasks.filter((t) => t.status === 'done').length;
     if (!n) return;
-    if (confirm(`완료 항목 ${n}개를 지울까요?`)) {
-      tasks = tasks.filter((t) => t.status !== 'done');
-      commit();
-    }
+    const snapshot = tasks.slice();
+    tasks = tasks.filter((t) => t.status !== 'done');
+    commit();
+    toast(`완료 항목 ${n}개를 지웠어요`, () => { tasks = snapshot; commit(); });
   });
 
   els.exportBtn.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+    const json = JSON.stringify(tasks, null, 2);
+    navigator.clipboard?.writeText(json).then(
+      () => toast('백업 데이터를 클립보드에 복사했어요'),
+      () => toast('클립보드 복사가 막혀 있어요. 파일로 저장을 시도했어요')
+    );
+    const blob = new Blob([json], { type: 'application/json' });
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(blob), download: `memyma-${todayStr()}.json`,
     });
@@ -267,9 +289,9 @@
       const added = valid.filter((t) => !ids.has(t.id));
       tasks = [...added, ...tasks];
       commit();
-      alert(`${added.length}개 항목을 가져왔어요.`);
+      toast(`${added.length}개 항목을 가져왔어요`);
     } catch {
-      alert('파일을 읽을 수 없어요. memyma에서 내보낸 JSON 파일인지 확인해 주세요.');
+      toast('파일을 읽을 수 없어요. memyma에서 내보낸 JSON 파일인지 확인해 주세요');
     }
   });
 
