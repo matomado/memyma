@@ -589,21 +589,65 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `memyma-backup-${todayStr()}.json`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  });
+
+  function importText(text, from) {
+    const status = $('#import-status');
+    let data;
+    try {
+      data = normalize(JSON.parse(text.trim()));
+    } catch {
+      status.textContent = `❌ ${from} 내용을 읽지 못했어요. memyma 백업 파일이 맞는지 확인해 주세요.`;
+      return false;
+    }
+    if (!confirm(`빚 ${data.debts.length}개, 상환 ${data.payments.length}건, 부수입 ${data.incomes.length}건이 들어 있어요.\n지금 데이터를 이 내용으로 바꿀까요?`)) {
+      status.textContent = '불러오기를 취소했어요.';
+      return false;
+    }
+    state = data; save();
+    status.textContent = `✅ 불러오기 완료! 빚 ${data.debts.length}개를 불러왔어요. 요약 탭을 확인해 보세요.`;
+    toast('불러오기 완료');
+    return true;
+  }
+
+  // 버튼으로 파일 선택 창 열기 (숨긴 input을 label로 여는 방식은 일부 폰에서 안 열려서)
+  $('#btn-import').addEventListener('click', () => {
+    $('#import-status').textContent = '';
+    $('#file-import').click();
   });
 
   $('#file-import').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    $('#import-status').textContent = `"${file.name}" 읽는 중…`;
     try {
-      const data = normalize(JSON.parse(await file.text()));
-      if (!confirm('지금 데이터를 백업 파일 내용으로 바꿀까요?')) return;
-      state = data; save(); toast('불러오기 완료');
+      importText(await file.text(), '파일');
     } catch {
-      toast('백업 파일을 읽지 못했어요');
+      $('#import-status').textContent = '❌ 파일을 열지 못했어요. 아래 붙여넣기 방법을 써 보세요.';
     } finally {
       e.target.value = '';
+    }
+  });
+
+  $('#btn-paste-import').addEventListener('click', () => {
+    const box = $('#paste-import');
+    if (!box.value.trim()) return toast('먼저 백업 내용을 붙여넣어 주세요');
+    if (importText(box.value, '붙여넣은')) box.value = '';
+  });
+
+  $('#btn-copy-export').addEventListener('click', async () => {
+    const text = JSON.stringify(state);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('복사했어요. 다른 기기에 붙여넣으세요');
+    } catch {
+      const box = $('#paste-import');
+      box.value = text; box.select();
+      toast('칸에 넣어 뒀어요. 길게 눌러 복사하세요');
     }
   });
 

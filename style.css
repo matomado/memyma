@@ -175,3 +175,7 @@ button:disabled { opacity: .35; cursor: default; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--line); color: var(--muted); font-weight: 500; margin-left: 4px; }
 .tag.side { background: var(--accent); color: #fff; }
 .forecast-list .t { font-weight: 600; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; opacity: 0; }
+textarea { width: 100%; font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; resize: vertical; }
+#import-status:empty { display: none; }

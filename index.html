@@ -154,8 +154,19 @@
         <p class="hint">모든 데이터는 이 브라우저에만 저장돼요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 내려받아 두세요.</p>
         <div class="row">
           <button id="btn-export">백업 파일 내려받기</button>
-          <label class="file-btn">백업 파일 불러오기<input type="file" id="file-import" accept="application/json" hidden /></label>
+          <button id="btn-import">백업 파일 불러오기</button>
+          <input type="file" id="file-import" accept=".json,application/json,text/plain" class="sr-only" tabindex="-1" />
         </div>
+        <p class="hint" id="import-status" role="status"></p>
+        <details>
+          <summary>파일이 안 열리면: 붙여넣기로 옮기기</summary>
+          <p class="hint">백업 내용을 글자로 복사해서 다른 기기의 이 칸에 붙여넣으면 돼요. 메신저 '나에게 보내기'로 옮기면 편해요.</p>
+          <textarea id="paste-import" rows="5" placeholder='{"debts": [...] } 처럼 생긴 백업 내용을 붙여넣기'></textarea>
+          <div class="row" style="margin-top:8px">
+            <button id="btn-paste-import">붙여넣은 내용 불러오기</button>
+            <button id="btn-copy-export" class="ghost">지금 데이터 복사하기</button>
+          </div>
+        </details>
       </div>
       <div class="card danger-zone">
         <h2>초기화</h2>
