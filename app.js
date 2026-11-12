@@ -5,7 +5,9 @@
   const $ = (sel, root = document) => root.querySelector(sel);
 
   // ---------- 데이터 ----------
-  const emptyState = () => ({ debts: [], payments: [], incomes: [] });
+  // debts: { id, name, principal, startDate, rate(연이율 %), monthly(월 상환 계획, 0이면 최근 평균 사용) }
+  // adjustments: 은행 앱 실제 잔액에 맞추면서 생긴 차이(이자 등) 기록
+  const emptyState = () => ({ debts: [], payments: [], incomes: [], adjustments: [] });
 
   function load() {
     try {
@@ -23,6 +25,7 @@
       debts: Array.isArray(d.debts) ? d.debts : [],
       payments: Array.isArray(d.payments) ? d.payments : [],
       incomes: Array.isArray(d.incomes) ? d.incomes : [],
+      adjustments: Array.isArray(d.adjustments) ? d.adjustments : [],
     };
   }
 
@@ -50,6 +53,10 @@
   const parseAmount = (s) => {
     const n = Number(String(s).replace(/[^\d.]/g, ''));
     return Number.isFinite(n) ? n : 0;
+  };
+  const parseRate = (s) => {
+    const n = parseFloat(String(s ?? '').replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
   };
   const todayStr = () => {
     const d = new Date();
@@ -80,13 +87,51 @@
 
   // ---------- 계산 ----------
   const paidFor = (debtId) => sum(state.payments.filter((p) => p.debtId === debtId), (p) => p.amount);
+  const adjustFor = (debtId) => sum(state.adjustments.filter((a) => a.debtId === debtId), (a) => a.amount);
+  const remainingFor = (d) => Math.max(0, d.principal - paidFor(d.id) + adjustFor(d.id));
 
   function totals() {
     const principal = sum(state.debts, (d) => d.principal);
     const paid = sum(state.payments, (p) => p.amount);
-    const remaining = sum(state.debts, (d) => Math.max(0, d.principal - paidFor(d.id)));
+    const remaining = sum(state.debts, remainingFor);
     return { principal, paid, remaining };
   }
+
+  // 월 상환액: 직접 정한 계획이 있으면 그걸, 없으면 최근 3개월 평균
+  function monthlyPaymentFor(d) {
+    if (d.monthly > 0) return { amount: d.monthly, source: 'plan' };
+    const last3 = monthsBack(3);
+    const avg = sum(state.payments.filter((p) => p.debtId === d.id && last3.includes(monthKey(p.date))), (p) => p.amount) / 3;
+    return { amount: avg, source: 'avg' };
+  }
+
+  // 월복리(연이율/12)로 한 달씩 굴려서 완납까지 걸리는 개월 수와 총 이자 계산
+  function simulate(balance, ratePct, pay) {
+    if (balance <= 0) return { status: 'done', months: 0, interest: 0 };
+    if (!(pay > 0)) return { status: 'nopay' };
+    const r = (ratePct || 0) / 100 / 12;
+    if (pay <= balance * r) return { status: 'stuck', monthlyInterest: balance * r };
+    let months = 0, interest = 0;
+    while (balance > 0.5 && months < 1200) {
+      const i = balance * r;
+      interest += i;
+      balance += i - pay;
+      months++;
+    }
+    return { status: 'ok', months, interest };
+  }
+
+  function forecastFor(d) {
+    const pay = monthlyPaymentFor(d);
+    return { ...simulate(remainingFor(d), d.rate, pay.amount), pay };
+  }
+
+  const monthLabel = (months) => {
+    const end = new Date();
+    end.setMonth(end.getMonth() + months);
+    return `${end.getFullYear()}년 ${end.getMonth() + 1}월`;
+  };
+  const durLabel = (m) => (m >= 12 ? `${Math.floor(m / 12)}년 ${m % 12 ? (m % 12) + '개월' : ''}`.trim() : `${m}개월`);
 
   function monthsBack(n) {
     const out = [];
@@ -131,21 +176,46 @@
     $('#s-progress-pct').textContent = pct.toFixed(1) + '%';
     $('#s-progress-bar').style.width = pct + '%';
 
-    // 최근 3개월 평균 상환액으로 완납 예상
-    const last3 = monthsBack(3);
-    const avg = sum(state.payments.filter((p) => last3.includes(monthKey(p.date))), (p) => p.amount) / 3;
-    const f = $('#s-forecast');
-    if (!state.debts.length) f.textContent = '';
-    else if (t.remaining <= 0) f.textContent = '🎉 모든 빚을 다 갚았어요!';
-    else if (avg > 0) {
-      const months = Math.ceil(t.remaining / avg);
-      const end = new Date();
-      end.setMonth(end.getMonth() + months);
-      f.textContent = `최근 3개월 평균 월 ${won(avg)}씩 갚고 있어요. 이대로면 약 ${months}개월 뒤 (${end.getFullYear()}년 ${end.getMonth() + 1}월) 완납!`;
-    } else f.textContent = '최근 3개월 상환 기록이 없어서 완납 시점을 예상할 수 없어요.';
+    renderForecast(t);
 
     $('#chart-debt').innerHTML = debtChart();
     $('#chart-income').innerHTML = incomeChart();
+  }
+
+  function renderForecast(t) {
+    const box = $('#s-forecast');
+    if (!state.debts.length) { box.innerHTML = ''; return; }
+    if (t.remaining <= 0) { box.innerHTML = '<p class="big-forecast">🎉 모든 빚을 다 갚았어요!</p>'; return; }
+
+    const active = state.debts.filter((d) => remainingFor(d) > 0).map((d) => ({ d, f: forecastFor(d) }));
+    const ok = active.filter((x) => x.f.status === 'ok');
+    const problems = active.filter((x) => x.f.status !== 'ok');
+    let head = '';
+    if (!problems.length) {
+      const months = Math.max(...ok.map((x) => x.f.months));
+      const interest = sum(ok, (x) => x.f.interest);
+      const monthly = sum(ok, (x) => x.f.pay.amount);
+      head = `<p class="big-forecast">${monthLabel(months)} 완납 예상 <span>(${durLabel(months)} 뒤)</span></p>
+        <p class="hint">매달 ${won(monthly)}씩 갚으면 앞으로 낼 이자는 약 <b>${won(interest)}</b>이에요.</p>`;
+    } else {
+      const stuck = problems.filter((x) => x.f.status === 'stuck').map((x) => esc(x.d.name));
+      const nopay = problems.filter((x) => x.f.status === 'nopay').map((x) => esc(x.d.name));
+      head = `<p class="big-forecast">아직 완납 시점을 알 수 없어요</p>`;
+      if (stuck.length) head += `<p class="hint"><b class="warn">${stuck.join(', ')}</b>: 매달 갚는 돈이 이자보다 적어서 빚이 줄지 않아요. 월 상환액을 늘려 보세요.</p>`;
+      if (nopay.length) head += `<p class="hint"><b>${nopay.join(', ')}</b>: 최근 상환 기록이 없어요. 빚 탭에서 월 상환 계획을 정해 주세요.</p>`;
+    }
+    const rows = active.map(({ d, f }) => `<li>
+        <div class="left"><div class="t">${esc(d.name)}</div>
+          <div class="d">연 ${d.rate || 0}% · 월 ${won(f.pay.amount)}${f.pay.source === 'avg' ? ' (최근 평균)' : ''}</div></div>
+        <div class="right">${forecastText(f)}</div></li>`).join('');
+    box.innerHTML = head + `<ul class="list forecast-list">${rows}</ul>`;
+  }
+
+  function forecastText(f) {
+    if (f.status === 'done') return '<span class="amt-good">완납</span>';
+    if (f.status === 'nopay') return '<span class="warn">월 상환액 필요</span>';
+    if (f.status === 'stuck') return `<span class="warn">이자(월 ${won(f.monthlyInterest)})보다<br>적게 갚는 중</span>`;
+    return `<span>${monthLabel(f.months)}<br><small>이자 ${won(f.interest)}</small></span>`;
   }
 
   function debtChart() {
@@ -153,6 +223,7 @@
     const events = [
       ...state.debts.map((d) => ({ date: d.startDate, delta: d.principal })),
       ...state.payments.map((p) => ({ date: p.date, delta: -p.amount })),
+      ...state.adjustments.map((a) => ({ date: a.date, delta: a.amount })),
     ].sort((a, b) => a.date.localeCompare(b.date));
 
     // 날짜별로 합쳐서 누적 잔액
@@ -233,24 +304,44 @@
     }
     list.innerHTML = state.debts.map((d) => {
       const paid = paidFor(d.id);
-      const remain = Math.max(0, d.principal - paid);
-      const pct = d.principal ? Math.min(100, (paid / d.principal) * 100) : 0;
-      const pays = state.payments.filter((p) => p.debtId === d.id).sort(byDateDesc);
+      const remain = remainingFor(d);
+      const pct = d.principal ? Math.max(0, Math.min(100, ((d.principal - remain) / d.principal) * 100)) : 0;
+      const f = forecastFor(d);
+      const pays = [
+        ...state.payments.filter((p) => p.debtId === d.id).map((p) => ({ ...p, kind: 'pay' })),
+        ...state.adjustments.filter((a) => a.debtId === d.id).map((a) => ({ ...a, kind: 'adj' })),
+      ].sort(byDateDesc);
       return `<div class="card debt-item ${remain <= 0 ? 'done' : ''}">
         <div class="top">
           <span class="name">${esc(d.name)}</span>
           <span class="remain">${remain <= 0 ? '완납 🎉' : won(remain)}</span>
         </div>
         <div class="progress small"><div class="bar" style="width:${pct}%"></div></div>
-        <div class="meta">${won(d.principal)} 중 ${won(paid)} 상환 (${pct.toFixed(1)}%) · ${fmtDate(d.startDate)} 시작</div>
+        <div class="meta">${won(d.principal)} 중 ${won(paid)} 상환 (${pct.toFixed(1)}%) · 연 ${d.rate || 0}% · ${fmtDate(d.startDate)} 시작</div>
+        ${remain > 0 ? `<div class="debt-forecast">완납 예상: ${forecastText(f).replace(/<br>/g, ' ')}</div>` : ''}
         <details>
           <summary>상환 기록 ${pays.length}건</summary>
-          ${pays.length ? `<ul class="list">${pays.map((p) => `
+          ${pays.length ? `<ul class="list">${pays.map((p) => p.kind === 'pay' ? `
             <li>
               <div class="left"><div class="t">${fmtDate(p.date)}</div>${p.memo ? `<div class="d">${esc(p.memo)}</div>` : ''}</div>
               <div class="right"><span class="amt-good">−${won(p.amount)}</span>
                 <button class="ghost" data-del-payment="${esc(p.id)}">삭제</button></div>
+            </li>` : `
+            <li>
+              <div class="left"><div class="t">${fmtDate(p.date)}</div><div class="d">잔액 맞추기 (이자 등)</div></div>
+              <div class="right"><span class="${p.amount > 0 ? 'warn' : 'amt-good'}">${p.amount > 0 ? '+' : '−'}${won(Math.abs(p.amount))}</span>
+                <button class="ghost" data-del-adjust="${esc(p.id)}">삭제</button></div>
             </li>`).join('')}</ul>` : '<p class="empty">기록 없음</p>'}
+        </details>
+        <details>
+          <summary>이자율 · 월 상환액 · 잔액 수정</summary>
+          <form class="form debt-edit" data-debt-id="${esc(d.id)}">
+            <label>연이율 (%)<input name="rate" inputmode="decimal" value="${d.rate || ''}" placeholder="4.5" /></label>
+            <label>월 상환 계획<input name="monthly" inputmode="numeric" value="${d.monthly ? d.monthly.toLocaleString('ko-KR') : ''}" placeholder="비우면 최근 평균" /></label>
+            <label class="full">실제 남은 잔액 <small>(은행 앱에 나온 금액. 이자가 붙어 차이가 나면 입력)</small>
+              <input name="balance" inputmode="numeric" placeholder="${remain.toLocaleString('ko-KR')}" /></label>
+            <button type="submit">저장</button>
+          </form>
           <div class="row" style="margin-top:10px"><button class="ghost" data-del-debt="${esc(d.id)}">이 빚 삭제</button></div>
         </details>
       </div>`;
@@ -300,7 +391,10 @@
     const f = new FormData(e.target);
     const principal = parseAmount(f.get('principal'));
     if (principal <= 0) return toast('금액을 확인해 주세요');
-    state.debts.push({ id: uid(), name: f.get('name').trim(), principal, startDate: f.get('startDate') });
+    state.debts.push({
+      id: uid(), name: f.get('name').trim(), principal, startDate: f.get('startDate'),
+      rate: parseRate(f.get('rate')), monthly: parseAmount(f.get('monthly')),
+    });
     e.target.reset(); resetDates(); save();
     toast('빚을 추가했어요');
   });
@@ -335,8 +429,28 @@
       state.incomes = state.incomes.filter((i) => i.id !== t.dataset.delIncome); save();
     } else if (t.dataset.delDebt && confirm('이 빚과 상환 기록을 모두 삭제할까요?')) {
       state.debts = state.debts.filter((d) => d.id !== t.dataset.delDebt);
-      state.payments = state.payments.filter((p) => p.debtId !== t.dataset.delDebt); save();
+      state.payments = state.payments.filter((p) => p.debtId !== t.dataset.delDebt);
+      state.adjustments = state.adjustments.filter((a) => a.debtId !== t.dataset.delDebt); save();
+    } else if (t.dataset.delAdjust && confirm('이 잔액 조정 기록을 삭제할까요?')) {
+      state.adjustments = state.adjustments.filter((a) => a.id !== t.dataset.delAdjust); save();
     }
+  });
+
+  // 빚별 이자율/월 상환액/실제 잔액 수정
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('.debt-edit');
+    if (!form) return;
+    e.preventDefault();
+    const d = state.debts.find((x) => x.id === form.dataset.debtId);
+    if (!d) return;
+    d.rate = parseRate(form.rate.value);
+    d.monthly = parseAmount(form.monthly.value);
+    if (form.balance.value.trim() !== '') {
+      const diff = parseAmount(form.balance.value) - remainingFor(d);
+      if (Math.round(diff) !== 0) state.adjustments.push({ id: uid(), debtId: d.id, amount: diff, date: todayStr() });
+    }
+    save();
+    toast('저장했어요');
   });
 
   $('#btn-export').addEventListener('click', () => {

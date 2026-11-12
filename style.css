@@ -152,3 +152,16 @@ summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .form { grid-template-columns: 1fr; }
   .stat .value { font-size: 17px; }
 }
+
+.big-forecast { font-size: 18px; font-weight: 700; margin: 0; }
+.big-forecast span { font-size: 14px; color: var(--muted); font-weight: 400; }
+.forecast-list { margin-top: 12px; }
+.forecast-list .right { text-align: right; white-space: normal; font-size: 13px; }
+.forecast-list small { color: var(--muted); }
+.warn { color: #d97706; font-weight: 600; }
+.debt-forecast { font-size: 13px; margin-top: 4px; }
+.debt-forecast small { color: var(--muted); }
+.form .full { grid-column: 1 / -1; }
+.form small { font-size: 11px; }
+input { font-size: 16px; } /* iOS에서 입력할 때 화면 확대 방지 */
+body { padding-bottom: env(safe-area-inset-bottom); }

@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>memyma · 빚 & 부수입</title>
+  <meta name="theme-color" content="#3e63dd" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="memyma" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -49,7 +56,11 @@
           <strong id="s-progress-pct">0%</strong>
         </div>
         <div class="progress"><div class="bar" id="s-progress-bar"></div></div>
-        <p class="hint" id="s-forecast"></p>
+      </div>
+
+      <div class="card">
+        <h2>완납 예상 (이자 포함)</h2>
+        <div id="s-forecast"></div>
       </div>
 
       <div class="card">
@@ -69,8 +80,10 @@
         <h2>빚 추가</h2>
         <form id="form-debt" class="form">
           <label>이름<input name="name" required placeholder="예: 학자금 대출" /></label>
-          <label>원래 금액<input name="principal" required inputmode="numeric" placeholder="10,000,000" /></label>
+          <label>원래 금액 <small>(또는 현재 잔액)</small><input name="principal" required inputmode="numeric" placeholder="10,000,000" /></label>
           <label>시작일<input name="startDate" type="date" required /></label>
+          <label>연이율 (%)<input name="rate" inputmode="decimal" placeholder="4.5" /></label>
+          <label>월 상환 계획 <small>(선택)</small><input name="monthly" inputmode="numeric" placeholder="비우면 최근 평균" /></label>
           <button type="submit">추가</button>
         </form>
       </div>
