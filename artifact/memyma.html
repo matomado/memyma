@@ -1,0 +1,1035 @@
+<title>memyma 운동기록</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one phone-width column, tab bar pinned to the bottom like a native app */
+:root {
+  --bg: #f2f4f3;
+  --surface: #fcfdfc;
+  --surface-2: #e9eceb;
+  --border: #dde2e0;
+  --text: #0c1110;
+  --text-2: #4c5553;
+  --text-3: #79827f;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --danger: #c93a39;
+  --grid: #e3e7e5;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --zone-1: #86b6ef;
+  --zone-2: #5598e7;
+  --zone-3: #2a78d6;
+  --zone-4: #1c5cab;
+  --zone-5: #104281;
+  --font-body: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --font-num: "Space Grotesk", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1312;
+    --surface: #181d1c;
+    --surface-2: #222827;
+    --border: #2c3331;
+    --text: #eef2f0;
+    --text-2: #bcc5c2;
+    --text-3: #87908d;
+    --accent: #3987e5;
+    --grid: #283030;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --zone-1: #184f95;
+    --zone-2: #256abf;
+    --zone-3: #3987e5;
+    --zone-4: #6da7ec;
+    --zone-5: #9ec5f4;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1312;
+  --surface: #181d1c;
+  --surface-2: #222827;
+  --border: #2c3331;
+  --text: #eef2f0;
+  --text-2: #bcc5c2;
+  --text-3: #87908d;
+  --accent: #3987e5;
+  --grid: #283030;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --zone-1: #184f95;
+  --zone-2: #256abf;
+  --zone-3: #3987e5;
+  --zone-4: #6da7ec;
+  --zone-5: #9ec5f4;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, textarea { font: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+header.top { display: flex; align-items: baseline; justify-content: space-between; }
+.brand { font-family: var(--font-num); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; }
+.brand-sub { color: var(--text-3); font-size: 13px; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.stack-lg { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.grid2 > * { min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card-tight { padding: 12px; gap: 2px; }
+h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+h2 { font-size: 14px; margin: 0; font-weight: 700; }
+h3 { font-size: 12px; margin: 0; font-weight: 700; color: var(--text-2); }
+p { margin: 0; }
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+.small { font-size: 12px; }
+.tiny { font-size: 11px; }
+.section-label { color: var(--text-2); font-size: 13px; font-weight: 700; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.big { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.chip {
+  flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px;
+  font-size: 14px; background: var(--surface); color: var(--text-2); white-space: nowrap;
+}
+.chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 700; }
+.chip-sm { font-size: 12px; padding: 3px 10px; }
+.type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.type-grid .chip { border-radius: 12px; padding: 11px 8px; font-size: 15px; text-align: center; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 12px; padding: 11px 14px; font-weight: 700; font-size: 15px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-dashed { border-style: dashed; color: var(--text-2); }
+.btn-danger { color: var(--danger); }
+.w-full { width: 100%; }
+.flex1 { flex: 1; }
+.flex2 { flex: 2; }
+
+label.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+label.field > span { color: var(--text-2); font-size: 12px; }
+.input {
+  width: 100%; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 10px; font-size: 16px; color: var(--text);
+}
+textarea.input { min-height: 76px; resize: vertical; }
+.center { text-align: center; }
+
+/* list rows */
+.wrow { display: flex; flex-direction: row; align-items: center; gap: 12px; text-align: left; width: 100%; padding: 12px; }
+.wrow .emoji { font-size: 26px; flex-shrink: 0; }
+.wrow .body { flex: 1; min-width: 0; }
+.wrow .line2 { color: var(--text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* stat tiles */
+.tile-label { color: var(--text-2); font-size: 12px; }
+.tile-delta { color: var(--text-3); font-size: 12px; }
+
+/* screenshots */
+.shots { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 4px; }
+.shot { position: relative; flex-shrink: 0; }
+.shot img { height: 112px; width: auto; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.shot button {
+  position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--text); color: var(--surface); font-size: 12px;
+}
+.add-shot {
+  flex-shrink: 0; height: 112px; width: 84px; border: 1px dashed var(--text-3); border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--text-2); font-size: 12px;
+}
+
+/* exercises */
+.ex { background: var(--surface-2); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ex-head { display: flex; align-items: center; gap: 6px; }
+.ex-idx { width: 20px; text-align: center; color: var(--text-3); font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.ex-head .input { font-weight: 700; flex: 1; }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
+.sets { padding-left: 26px; display: flex; flex-direction: column; gap: 6px; }
+.set-row { display: grid; grid-template-columns: 34px 1fr 1fr 32px; gap: 8px; align-items: center; }
+.set-row .input { text-align: center; font-family: var(--font-num); }
+.zones { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.zones .input { text-align: center; padding: 9px 2px; }
+
+/* analysis */
+.analysis ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
+/* zone bars */
+.zbar { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.zbar > div { height: 100%; border-radius: 999px; }
+
+/* charts */
+.chart { position: relative; touch-action: pan-y; }
+.chart svg { display: block; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-2); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.tip {
+  position: absolute; z-index: 5; pointer-events: none; transform: translate(-50%, -100%);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+  font-size: 12px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.15); white-space: nowrap;
+}
+.tip .r { display: flex; align-items: center; gap: 6px; }
+.tip .v { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+
+/* tab bar */
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
+}
+nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); padding-top: 6px; }
+nav.tabs button { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 11px; color: var(--text-3); padding: 4px 0; }
+nav.tabs button[aria-current="page"], nav.tabs button.strong { color: var(--text); font-weight: 700; }
+nav.tabs .ic { font-size: 19px; line-height: 1.1; }
+
+.savebar {
+  position: sticky; bottom: 0; margin: 0 -16px; padding: 14px 16px max(14px, env(safe-area-inset-bottom, 0px));
+  display: flex; gap: 8px; background: linear-gradient(to bottom, transparent, var(--bg) 35%);
+}
+
+.banner { border-radius: 12px; padding: 10px 12px; font-size: 13px; background: var(--surface-2); color: var(--text-2); }
+
+/* modal + toast */
+.overlay { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / 0.4); display: flex; align-items: flex-end; justify-content: center; }
+.sheet {
+  width: 100%; max-width: 560px; background: var(--surface); border-radius: 18px 18px 0 0;
+  padding: 20px max(16px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 14px;
+}
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 50;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  background: var(--text); color: var(--surface); border-radius: 999px; padding: 9px 16px; font-size: 14px;
+  max-width: calc(100% - 32px); text-align: center;
+}
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp 0.8s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+</style>
+
+<div class="wrap" id="app"></div>
+<nav class="tabs" id="tabs"></nav>
+<div id="overlay"></div>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="shot-input" accept="image/*" multiple hidden>
+<input type="file" id="import-input" accept="application/json,.json" hidden>
+
+<script>
+"use strict";
+
+/* ---------- 상수 ---------- */
+const TYPES = [
+  { id: "swim_lesson", cat: "swim", label: "수영 · 강습", short: "수영강습", emoji: "🏊" },
+  { id: "swim_free", cat: "swim", label: "수영 · 자유수영", short: "자유수영", emoji: "🌊" },
+  { id: "gym_pt", cat: "gym", label: "헬스 · PT 수업", short: "PT", emoji: "🏋️" },
+  { id: "gym_solo", cat: "gym", label: "헬스 · 개인운동", short: "개인운동", emoji: "💪" },
+];
+const typeInfo = (id) => TYPES.find((t) => t.id === id) || TYPES[0];
+const INTENSITY = { easy: "가벼움", moderate: "보통", hard: "힘듦", very_hard: "매우 힘듦" };
+const METRIC_KEYS = ["duration_min", "active_kcal", "total_kcal", "avg_hr", "max_hr", "min_hr", "distance_m", "laps", "pool_length_m", "avg_pace_sec_per_100m"];
+const ZONE_KEYS = ["zone1_min", "zone2_min", "zone3_min", "zone4_min", "zone5_min"];
+const ZONE_NAMES = ["영역 1 · 매우 가벼움", "영역 2 · 가벼움", "영역 3 · 보통", "영역 4 · 힘듦", "영역 5 · 최대"];
+const COMMON_EX = ["스쿼트", "데드리프트", "루마니안 데드리프트", "벤치프레스", "인클라인 벤치프레스", "덤벨 프레스", "오버헤드 프레스", "숄더 프레스 머신", "사이드 레터럴 레이즈", "바벨 로우", "덤벨 로우", "랫풀다운", "시티드 로우", "풀업", "레그 프레스", "레그 익스텐션", "레그 컬", "런지", "힙 쓰러스트", "힙 어브덕션", "케이블 플라이", "체스트 프레스 머신", "바이셉 컬", "트라이셉 푸시다운", "케틀벨 스윙", "플랭크"];
+const LOCAL_KEY = "memyma.workouts.v1";
+
+/* ---------- 유틸 ---------- */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const todayStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const fmtDate = (s) => { const d = parseDate(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${"일월화수목금토"[d.getDay()]})`; };
+const fmtNum = (n, unit = "") => (n == null ? "–" : `${Math.round(n).toLocaleString("ko-KR")}${unit}`);
+const fmtDur = (min) => { if (min == null) return "–"; const t = Math.round(min), h = Math.floor(t / 60), m = t % 60; return h ? `${h}시간 ${m}분` : `${m}분`; };
+const fmtPace = (s) => (s == null ? "–" : `${Math.floor(s / 60)}'${String(Math.round(s % 60)).padStart(2, "0")}"/100m`);
+const paceText = (s) => (s == null ? "" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`);
+const num = (v) => { if (v === "" || v == null) return null; const n = Number(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : null; };
+const toNum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" ? num(v) : null);
+const kg = (v) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10));
+const emptyMetrics = () => ({ duration_min: null, active_kcal: null, total_kcal: null, avg_hr: null, max_hr: null, min_hr: null, distance_m: null, laps: null, pool_length_m: null, avg_pace_sec_per_100m: null, hr_zones: null });
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+function sortW(list) {
+  return [...list].sort((a, b) =>
+    a.date === b.date ? (b.startTime || "").localeCompare(a.startTime || "") || (b.createdAt || "").localeCompare(a.createdAt || "") : b.date.localeCompare(a.date));
+}
+
+/* 종목 */
+const normName = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
+const fmtSet = (s) => `${s.weight_kg != null ? kg(s.weight_kg) + "kg" : "맨몸"}${s.reps != null ? "×" + s.reps : ""}`;
+function summarizeSets(sets) {
+  const v = (sets || []).filter((s) => s.weight_kg != null || s.reps != null);
+  if (!v.length) return "기록 없음";
+  const g = [];
+  for (const s of v) { const l = fmtSet(s); const last = g[g.length - 1]; if (last && last.l === l) last.c++; else g.push({ l, c: 1 }); }
+  return g.map((x) => (x.c > 1 ? `${x.l} ×${x.c}세트` : x.l)).join(", ");
+}
+const volume = (ex) => (ex.sets || []).reduce((s, x) => s + (x.weight_kg || 0) * (x.reps || 0), 0);
+const totalReps = (ex) => (ex.sets || []).reduce((s, x) => s + (x.reps || 0), 0);
+const topWeight = (ex) => { const w = (ex.sets || []).map((s) => s.weight_kg).filter((x) => x != null); return w.length ? Math.max(...w) : null; };
+const cleanEx = (list) => (list || []).map((e) => ({ id: e.id, name: String(e.name || "").trim(), sets: (e.sets || []).filter((s) => s.weight_kg != null || s.reps != null) })).filter((e) => e.name && e.sets.length);
+function exHistory(workouts, name, excludeId) {
+  const k = normName(name), out = [];
+  for (const w of workouts) { if (w.id === excludeId) continue; for (const e of w.exercises || []) if (normName(e.name) === k) out.push({ w, e }); }
+  return out;
+}
+function allExNames(workouts) {
+  const m = new Map();
+  for (const w of workouts) for (const e of w.exercises || []) { const k = normName(e.name); const c = m.get(k); m.set(k, { name: c?.name || e.name, c: (c?.c || 0) + 1 }); }
+  return [...m.values()].sort((a, b) => b.c - a.c).map((x) => x.name);
+}
+
+/* ---------- 상태 ---------- */
+const S = {
+  workouts: [],
+  view: "home",
+  detailId: null,
+  homeFilter: "all",
+  listFilter: "all",
+  progressName: null,
+  draft: null,
+  shots: [],
+  busy: false,
+  err: null,
+  store: "loading", // loading | db | local | slow | error
+  canImages: false,
+  canSample: null, // null: unknown yet
+  dirty: false,
+};
+let DB = null, SAMPLE = null, DOWNLOADS = null;
+
+/* ---------- 저장소 ---------- */
+function loadLocal() { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]"); } catch { return []; } }
+function saveLocal() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(S.workouts)); } catch { toast("이 기기에 저장하지 못했어요. 설정에서 백업해 두세요."); } }
+
+async function initStore() {
+  const timer = setTimeout(() => { if (S.store === "loading") { S.store = "slow"; refresh(); } }, 10000);
+  try { DB = window.claude ? await window.claude.use("db") : null; } catch { DB = null; }
+  if (!DB) {
+    clearTimeout(timer);
+    S.store = "local";
+    S.workouts = sortW(loadLocal());
+    refresh();
+    return;
+  }
+  DB.collection("workouts").onSnapshot(
+    (snap) => {
+      S.workouts = sortW(snap.docs.map((d) => d.data()).filter((w) => w && w.id && w.date));
+      if (!snap.metadata.fromCache) { clearTimeout(timer); S.store = "db"; }
+      else if (S.store === "loading") S.store = "db";
+      refresh();
+    },
+    () => { clearTimeout(timer); S.store = "error"; refresh(); },
+  );
+}
+
+async function persist(w) {
+  const i = S.workouts.findIndex((x) => x.id === w.id);
+  if (i >= 0) S.workouts[i] = w; else S.workouts.push(w);
+  S.workouts = sortW(S.workouts);
+  if (DB) await DB.collection("workouts").doc(w.id).set(clone(w));
+  else saveLocal();
+}
+async function removeW(id) {
+  S.workouts = S.workouts.filter((w) => w.id !== id);
+  if (DB) await DB.collection("workouts").doc(id).delete();
+  else saveLocal();
+}
+
+async function initCaps() {
+  try { SAMPLE = window.claude ? await window.claude.use("sample") : null; } catch { SAMPLE = null; }
+  S.canSample = !!SAMPLE;
+  if (SAMPLE) {
+    try { const lim = await SAMPLE.limits(); S.canImages = !!lim?.images; } catch { S.canImages = false; }
+  }
+  try { DOWNLOADS = window.claude ? await window.claude.use("downloads") : null; } catch { DOWNLOADS = null; }
+  if (S.view === "edit" || S.view === "settings") render();
+}
+
+/* ---------- 화면 전환 ---------- */
+function go(view, extra = {}) {
+  if (S.view === "edit" && view !== "edit") { S.shots.forEach((s) => URL.revokeObjectURL(s.url)); S.shots = []; S.err = null; }
+  Object.assign(S, { view }, extra);
+  render();
+  window.scrollTo(0, 0);
+}
+/* 데이터가 바뀌었을 때: 입력 중이면 화면을 다시 그리지 않음 */
+function refresh() { if (S.view === "edit" || $("#overlay").childElementCount) { S.dirty = true; renderTabs(); return; } render(); }
+
+function render() {
+  S.dirty = false;
+  const app = $("#app");
+  let html = `<header class="top"><button class="brand" data-act="go" data-view="home">memyma</button><span class="brand-sub">수영 · 헬스 기록</span></header>`;
+  html += storeBanner();
+  if (S.store === "loading") html += `<p class="faint center" style="padding:40px 0">기록을 불러오는 중…</p>`;
+  else if (S.view === "home") html += viewHome();
+  else if (S.view === "list") html += viewList();
+  else if (S.view === "detail") html += viewDetail();
+  else if (S.view === "edit") html += viewEdit();
+  else if (S.view === "settings") html += viewSettings();
+  app.innerHTML = html;
+  renderTabs();
+  mountCharts();
+}
+
+function storeBanner() {
+  if (S.store === "slow") return `<div class="banner">저장소에 연결하는 중이에요. 인터넷 연결을 확인해 주세요.</div>`;
+  if (S.store === "error") return `<div class="banner">저장소 연결이 끊겼어요. 페이지를 다시 열어 주세요. 지금 화면의 기록은 최신이 아닐 수 있어요.</div>`;
+  if (S.store === "local") return `<div class="banner">claude.ai에 로그인한 상태가 아니라서 기록이 이 브라우저에만 저장돼요.</div>`;
+  return "";
+}
+
+function renderTabs() {
+  const nav = $("#tabs");
+  if (S.view === "edit") { nav.hidden = true; return; }
+  nav.hidden = false;
+  const tab = S.view === "detail" ? "list" : S.view;
+  const b = (v, ic, label, strong) =>
+    `<button data-act="${v === "edit" ? "new" : "go"}" data-view="${v}" ${tab === v ? 'aria-current="page"' : ""} class="${strong ? "strong" : ""}"><span class="ic" aria-hidden="true">${ic}</span>${label}</button>`;
+  nav.innerHTML = `<div class="inner">${b("home", "📊", "요약")}${b("list", "📋", "기록")}${b("edit", "➕", "새 기록", true)}${b("settings", "⚙️", "설정")}</div>`;
+}
+
+/* ---------- 공통 조각 ---------- */
+function filterChips(act, cur) {
+  return `<div class="chips">${[["all", "전체"], ["swim", "🏊 수영"], ["gym", "🏋️ 헬스"]]
+    .map(([id, l]) => `<button class="chip" data-act="${act}" data-v="${id}" aria-pressed="${cur === id}">${l}</button>`).join("")}</div>`;
+}
+function wRow(w) {
+  const t = typeInfo(w.type), m = w.metrics || {};
+  const parts = [fmtDur(m.duration_min), m.active_kcal != null && `${fmtNum(m.active_kcal)} kcal`, m.avg_hr != null && `평균 ${fmtNum(m.avg_hr)} bpm`, m.distance_m != null && `${fmtNum(m.distance_m)} m`,
+    (w.exercises || []).length && (w.exercises.length > 1 ? `${w.exercises[0].name} 외 ${w.exercises.length - 1}종목` : w.exercises[0].name)].filter(Boolean);
+  return `<button class="card wrow" data-act="open" data-id="${esc(w.id)}">
+    <span class="emoji" aria-hidden="true">${t.emoji}</span>
+    <span class="body"><span class="row" style="gap:8px;align-items:baseline"><b>${t.short}</b><span class="faint small">${fmtDate(w.date)}${w.startTime ? " " + esc(w.startTime) : ""}</span></span>
+    <span class="line2" style="display:block">${esc(parts.join(" · "))}</span></span>
+    ${w.analysis ? `<span class="chip chip-sm">${INTENSITY[w.analysis.intensity] || ""}</span>` : ""}
+  </button>`;
+}
+function analysisCard(a) {
+  const block = (t, items) => (items && items.length ? `<div class="stack" style="gap:4px"><h3>${t}</h3><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "");
+  return `<section class="card analysis">
+    <div class="row" style="justify-content:space-between"><h2>✨ AI 분석</h2><span class="chip chip-sm">강도 · ${INTENSITY[a.intensity] || "–"}</span></div>
+    <p>${esc(a.summary)}</p>
+    ${block("눈에 띄는 점", a.highlights)}
+    ${a.comparison ? `<div class="stack" style="gap:4px"><h3>최근 기록과 비교</h3><p style="font-size:14px">${esc(a.comparison)}</p></div>` : ""}
+    ${block("다음엔 이렇게", a.suggestions)}
+    ${a.unreadable && a.unreadable.length ? `<p class="faint small">읽지 못한 항목: ${esc(a.unreadable.join(", "))}</p>` : ""}
+  </section>`;
+}
+function zoneBars(z) {
+  const vals = ZONE_KEYS.map((k) => z[k]);
+  const total = vals.reduce((s, v) => s + (v || 0), 0), max = Math.max(...vals.map((v) => v || 0), 1);
+  return `<div class="stack">${vals.map((v, i) => `<div class="stack" style="gap:3px">
+    <div class="row small" style="justify-content:space-between"><span class="muted">${ZONE_NAMES[i]}</span><span class="num">${v == null ? "–" : Math.round(v * 10) / 10 + "분"}${total && v != null ? `<span class="faint"> · ${Math.round((v / total) * 100)}%</span>` : ""}</span></div>
+    <div class="zbar"><div style="width:${((v || 0) / max) * 100}%;background:var(--zone-${i + 1})"></div></div></div>`).join("")}</div>`;
+}
+
+/* ---------- 요약 ---------- */
+const SERIES = TYPES.map((t, i) => ({ key: t.id, label: t.short, color: `var(--series-${i + 1})` }));
+const CHARTS = {};
+
+function viewHome() {
+  if (!S.workouts.length) {
+    return `<section class="card center" style="padding:28px 20px;gap:14px;margin-top:12px">
+      <div style="font-size:38px">🏊‍♀️ 🏋️</div>
+      <h1>첫 운동을 기록해 볼까요?</h1>
+      <p class="muted" style="font-size:14px">애플워치 운동 기록(아이폰 피트니스 앱)을 캡처해서 넣으면 심박수·칼로리·거리를 읽고 분석해 드려요. PT 종목과 세트도 기록할 수 있어요.</p>
+      <div><button class="btn btn-primary" data-act="new">➕ 새 기록 추가</button></div>
+    </section>`;
+  }
+  const f = S.homeFilter;
+  const list = S.workouts.filter((w) => f === "all" || typeInfo(w.type).cat === f);
+  const series = SERIES.filter((s) => f === "all" || typeInfo(s.key).cat === f);
+  const month = todayStr().slice(0, 7);
+  const tm = list.filter((w) => w.date.startsWith(month));
+  const sum = (fn) => tm.reduce((s, w) => s + (fn(w) || 0), 0);
+  const dist = sum((w) => w.metrics?.distance_m);
+
+  // 최근 8주
+  const now = new Date(); const ws0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()); ws0.setDate(ws0.getDate() - ((ws0.getDay() + 6) % 7));
+  const weeks = [];
+  for (let k = 7; k >= 0; k--) {
+    const ws = new Date(ws0); ws.setDate(ws.getDate() - 7 * k); const we = new Date(ws); we.setDate(we.getDate() + 7);
+    const values = {};
+    for (const w of list) { const d = parseDate(w.date); if (d >= ws && d < we) values[w.type] = (values[w.type] || 0) + (w.metrics?.duration_min || 0); }
+    weeks.push({ label: `${ws.getMonth() + 1}/${ws.getDate()}`, sub: `${ws.getMonth() + 1}/${ws.getDate()} 주`, values });
+  }
+  CHARTS.weeks = { kind: "stack", data: weeks, series, unit: "분" };
+
+  const hr = list.filter((w) => w.metrics?.avg_hr != null || w.metrics?.max_hr != null).slice(0, 20).reverse().map((w) => {
+    const d = parseDate(w.date);
+    return { axis: `${d.getMonth() + 1}/${d.getDate()}`, label: `${d.getMonth() + 1}/${d.getDate()} ${typeInfo(w.type).short}`, values: { avg: w.metrics.avg_hr, max: w.metrics.max_hr } };
+  });
+  CHARTS.hr = { kind: "line", data: hr, unit: "bpm", series: [{ key: "avg", label: "평균 심박", color: "var(--series-1)" }, { key: "max", label: "최대 심박", color: "var(--series-2)" }] };
+
+  const legend = (items) => `<div class="legend">${items.map((i) => `<span><span class="sw" style="background:${i.color}"></span>${i.label}</span>`).join("")}</div>`;
+
+  return `${filterChips("homeFilter", f)}
+  <section class="stack"><div class="section-label">이번 달</div>
+    <div class="grid2">
+      ${tile("운동 횟수", `${tm.length}회`)}
+      ${tile("운동 시간", fmtDur(sum((w) => w.metrics?.duration_min)))}
+      ${tile("활동 칼로리", fmtNum(sum((w) => w.metrics?.active_kcal), " kcal"))}
+      ${f !== "gym" ? tile("수영 거리", dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : fmtNum(dist, " m"))
+        : tile("PT / 개인운동", `${tm.filter((w) => w.type === "gym_pt").length} / ${tm.filter((w) => w.type === "gym_solo").length}회`)}
+    </div>
+  </section>
+  <section class="card"><div class="stack" style="gap:6px"><h2>주별 운동 시간 (분)</h2>${legend(series)}</div><div class="chart" data-chart="weeks"></div></section>
+  ${hr.length ? `<section class="card"><div class="stack" style="gap:6px"><h2>운동별 심박수 (최근 ${hr.length}회, bpm)</h2>${legend(CHARTS.hr.series)}</div><div class="chart" data-chart="hr"></div></section>` : ""}
+  ${f !== "swim" ? progressCard() : ""}
+  <section class="stack"><div class="section-label">최근 기록</div>
+    ${list.slice(0, 3).map(wRow).join("") || `<p class="faint small">이 종류의 기록이 아직 없어요.</p>`}
+  </section>`;
+}
+function tile(label, value, delta) {
+  return `<div class="card card-tight"><div class="tile-label">${label}</div><div class="big num">${esc(value)}</div>${delta ? `<div class="tile-delta">지난번보다 ${esc(delta)}</div>` : ""}</div>`;
+}
+function progressCard() {
+  const names = allExNames(S.workouts);
+  if (!names.length) return "";
+  const name = S.progressName && names.includes(S.progressName) ? S.progressName : names[0];
+  const hist = exHistory(S.workouts, name).slice(0, 20).reverse();
+  const pts = hist.map(({ w, e }) => { const d = parseDate(w.date); return { axis: `${d.getMonth() + 1}/${d.getDate()}`, label: `${d.getMonth() + 1}/${d.getDate()} · ${summarizeSets(e.sets)}`, values: { top: topWeight(e) } }; }).filter((p) => p.values.top != null);
+  CHARTS.progress = { kind: "line", data: pts, unit: "kg", series: [{ key: "top", label: "최고 무게", color: "var(--series-1)" }] };
+  const latest = hist[hist.length - 1];
+  const best = Math.max(...hist.map((h) => topWeight(h.e) || 0));
+  const mini = (l, v) => `<div style="background:var(--surface-2);border-radius:12px;padding:8px" class="center"><div class="faint tiny">${l}</div><div class="num" style="font-weight:700">${esc(v)}</div></div>`;
+  return `<section class="card"><h2>종목별 성장</h2>
+    <div class="chips">${names.map((n) => `<button class="chip chip-sm" data-act="pickEx" data-v="${esc(n)}" aria-pressed="${n === name}">${esc(n)}</button>`).join("")}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${mini("기록 횟수", `${hist.length}회`)}${mini("최고 무게", best > 0 ? `${kg(best)}kg` : "맨몸")}${mini("최근 볼륨", latest ? `${fmtNum(volume(latest.e))}kg` : "–")}</div>
+    ${pts.length >= 2 ? `<p class="muted small">회차별 최고 무게 (kg)</p><div class="chart" data-chart="progress"></div>` : `<p class="faint small">${latest ? `최근: ${esc(summarizeSets(latest.e.sets))} · ` : ""}두 번 이상 기록하면 그래프가 나와요.</p>`}
+  </section>`;
+}
+
+/* ---------- 목록 ---------- */
+function viewList() {
+  const list = S.workouts.filter((w) => S.listFilter === "all" || typeInfo(w.type).cat === S.listFilter);
+  const groups = new Map();
+  for (const w of list) { const k = w.date.slice(0, 7); groups.set(k, [...(groups.get(k) || []), w]); }
+  return `${filterChips("listFilter", S.listFilter)}
+  ${list.length ? "" : `<p class="faint center" style="padding:40px 0">아직 기록이 없어요.</p>`}
+  ${[...groups.entries()].map(([k, items]) => { const [y, m] = k.split("-"); return `<section class="stack"><div class="section-label">${y}년 ${Number(m)}월 · ${items.length}회</div>${items.map(wRow).join("")}</section>`; }).join("")}`;
+}
+
+/* ---------- 상세 ---------- */
+function viewDetail() {
+  const w = S.workouts.find((x) => x.id === S.detailId);
+  if (!w) return `<p class="faint center" style="padding:40px 0">기록을 찾을 수 없어요.</p>`;
+  const t = typeInfo(w.type), m = w.metrics || {}, isSwim = t.cat === "swim";
+  const idx = S.workouts.findIndex((x) => x.id === w.id);
+  const older = S.workouts.slice(idx + 1);
+  const prev = older.find((x) => x.type === w.type);
+  const diff = (a, b, unit) => { if (a == null || b == null) return ""; const d = Math.round(a - b); return d === 0 ? "같음" : `${d > 0 ? "▲" : "▼"} ${Math.abs(d).toLocaleString("ko-KR")}${unit}`; };
+  const pm = prev?.metrics || {};
+  const tiles = [
+    tile("운동 시간", fmtDur(m.duration_min), diff(m.duration_min, pm.duration_min, "분")),
+    tile("활동 칼로리", fmtNum(m.active_kcal, " kcal"), diff(m.active_kcal, pm.active_kcal, " kcal")),
+    tile("평균 심박", fmtNum(m.avg_hr, " bpm"), diff(m.avg_hr, pm.avg_hr, " bpm")),
+    tile("최대 심박", fmtNum(m.max_hr, " bpm")),
+  ];
+  if (m.total_kcal != null) tiles.push(tile("총 칼로리", fmtNum(m.total_kcal, " kcal")));
+  if (m.min_hr != null) tiles.push(tile("최저 심박", fmtNum(m.min_hr, " bpm")));
+  if (isSwim) {
+    tiles.push(tile("거리", fmtNum(m.distance_m, " m"), diff(m.distance_m, pm.distance_m, " m")));
+    tiles.push(tile("평균 페이스", fmtPace(m.avg_pace_sec_per_100m)));
+    if (m.laps != null) tiles.push(tile("랩", `${fmtNum(m.laps)}랩${m.pool_length_m ? ` (${m.pool_length_m}m 풀)` : ""}`));
+  }
+  if (tiles.length % 2) tiles.push("<div></div>");
+
+  const exs = w.exercises || [];
+  const exHtml = !isSwim && exs.length ? `<section class="card">
+    <div class="row" style="justify-content:space-between;align-items:baseline;flex-wrap:wrap"><h2>종목 · 세트</h2>
+    <span class="faint small">${exs.length}종목 · ${exs.reduce((s, e) => s + e.sets.length, 0)}세트 · 총 볼륨 ${fmtNum(exs.reduce((s, e) => s + volume(e), 0))}kg</span></div>
+    <div class="stack-lg">${exs.map((e) => {
+      const pe = exHistory(older, e.name)[0]?.e; const tw = topWeight(e), pw = pe ? topWeight(pe) : null, v = volume(e);
+      return `<div class="stack" style="gap:1px">
+        <div class="row" style="justify-content:space-between;align-items:baseline"><b>${esc(e.name)}</b><span class="faint small num">${v > 0 ? `볼륨 ${fmtNum(v)}kg` : `${totalReps(e)}회`}</span></div>
+        <div class="muted" style="font-size:14px">${esc(summarizeSets(e.sets))}</div>
+        ${pe ? `<div class="faint small">지난번 ${esc(summarizeSets(pe.sets))}${tw != null && pw != null && tw !== pw ? ` · 최고 무게 ${tw > pw ? "▲" : "▼"} ${kg(Math.abs(tw - pw))}kg` : ""}</div>` : ""}
+      </div>`; }).join("")}</div></section>` : "";
+
+  return `<div><button class="muted small" data-act="go" data-view="list">‹ 목록</button></div>
+  <div class="row" style="gap:12px"><span style="font-size:38px" aria-hidden="true">${t.emoji}</span>
+    <div><h1>${t.label}</h1><p class="muted small">${fmtDate(w.date)}${w.startTime ? ` · ${esc(w.startTime)} 시작` : ""}</p></div></div>
+  <div class="grid2">${tiles.join("")}</div>
+  ${exHtml}
+  ${m.hr_zones ? `<section class="card"><h2>심박수 영역</h2>${zoneBars(m.hr_zones)}</section>` : ""}
+  ${w.analysis ? analysisCard(w.analysis) : `<p class="faint small">아직 AI 분석이 없어요. 수정 화면에서 캡처를 넣고 분석해 보세요.</p>`}
+  ${w.memo ? `<section class="card"><h2>메모</h2><p style="white-space:pre-wrap;font-size:14px">${esc(w.memo)}</p></section>` : ""}
+  <div class="row"><button class="btn flex1" data-act="edit" data-id="${esc(w.id)}">수정 · 다시 분석</button><button class="btn btn-danger" data-act="askDelete" data-id="${esc(w.id)}">삭제</button></div>`;
+}
+
+/* ---------- 입력/수정 ---------- */
+function newDraft(base) {
+  if (base) return clone({ ...base, exercises: base.exercises || [], isNew: false });
+  return { id: uid(), isNew: true, type: "swim_lesson", date: todayStr(), startTime: "", memo: "", metrics: emptyMetrics(), exercises: [], analysis: null, createdAt: null };
+}
+const othersOf = (d) => S.workouts.filter((w) => w.id !== d.id);
+function lastGymWith(d) {
+  const o = othersOf(d);
+  return o.find((w) => w.type === d.type && (w.exercises || []).length) || o.find((w) => typeInfo(w.type).cat === "gym" && (w.exercises || []).length);
+}
+function exSummaryText(d) {
+  const sets = d.exercises.reduce((s, e) => s + e.sets.filter((x) => x.reps != null || x.weight_kg != null).length, 0);
+  return d.exercises.length ? `${d.exercises.length}종목 · ${sets}세트 · 총 볼륨 ${fmtNum(d.exercises.reduce((s, e) => s + volume(e), 0))}kg` : "오늘 한 종목을 추가해 주세요.";
+}
+function exHint(d, e) {
+  if (!String(e.name || "").trim()) return "";
+  const h = exHistory(S.workouts, e.name, d.id)[0];
+  return h ? `지난번: ${summarizeSets(h.e.sets)}` : "";
+}
+
+function viewEdit() {
+  const d = S.draft, isSwim = typeInfo(d.type).cat === "swim", m = d.metrics;
+  const nf = (label, key) => `<label class="field"><span>${label}</span><input class="input num" id="m-${key}" inputmode="decimal" placeholder="–" data-m="${key}" value="${m[key] ?? ""}"></label>`;
+  const last = !isSwim ? lastGymWith(d) : null;
+  const names = [...new Set([...allExNames(S.workouts), ...COMMON_EX])];
+
+  const exSection = isSwim ? "" : `<section class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div class="stack" style="gap:2px"><h2>종목 · 세트</h2><p class="faint small" id="ex-summary">${esc(exSummaryText(d))}</p></div>
+      ${last ? `<button class="chip chip-sm" data-act="loadLast">↺ 지난번 종목 불러오기</button>` : ""}
+    </div>
+    <datalist id="ex-names">${names.map((n) => `<option value="${esc(n)}"></option>`).join("")}</datalist>
+    ${d.exercises.map((e, i) => `<div class="ex">
+      <div class="ex-head"><span class="ex-idx">${i + 1}</span>
+        <input class="input" id="ex-${e.id}" list="ex-names" placeholder="종목 이름 (예: 스쿼트)" data-exname="${e.id}" value="${esc(e.name)}">
+        <button class="icon-btn" aria-label="위로" data-act="exMove" data-id="${e.id}" data-v="-1">↑</button>
+        <button class="icon-btn" aria-label="아래로" data-act="exMove" data-id="${e.id}" data-v="1">↓</button>
+        <button class="icon-btn" aria-label="종목 삭제" data-act="exDel" data-id="${e.id}">✕</button>
+      </div>
+      <p class="faint small" style="padding-left:26px" id="hint-${e.id}">${esc(exHint(d, e))}</p>
+      <div class="sets">
+        <div class="set-row faint tiny"><span>세트</span><span>무게 (kg)</span><span>횟수</span><span></span></div>
+        ${e.sets.map((s, j) => `<div class="set-row">
+          <span class="muted num">${j + 1}</span>
+          <input class="input" id="w-${e.id}-${j}" inputmode="decimal" placeholder="맨몸" data-set="${e.id}:${j}:weight_kg" value="${s.weight_kg ?? ""}">
+          <input class="input" id="r-${e.id}-${j}" inputmode="numeric" placeholder="회" data-set="${e.id}:${j}:reps" value="${s.reps ?? ""}">
+          <button class="icon-btn" aria-label="${j + 1}세트 삭제" data-act="setDel" data-id="${e.id}" data-v="${j}">−</button>
+        </div>`).join("")}
+        <button class="chip w-full" style="border-radius:10px" data-act="setAdd" data-id="${e.id}">＋ 세트 추가 (직전 세트 복사)</button>
+      </div>
+    </div>`).join("")}
+    <button class="btn btn-dashed w-full" data-act="exAdd">＋ 종목 추가</button>
+  </section>`;
+
+  const canAnalyze = S.shots.length > 0 || METRIC_KEYS.some((k) => m[k] != null) || (!isSwim && cleanEx(d.exercises).length > 0);
+  let analyzeArea;
+  if (S.canSample === false) {
+    analyzeArea = `<p class="faint small">이 화면에서는 AI 분석을 쓸 수 없어요. claude.ai에 로그인한 상태로 열면 쓸 수 있어요. 수치는 직접 입력해서 저장할 수 있어요.</p>`;
+  } else {
+    analyzeArea = `<button class="btn btn-primary w-full" data-act="analyze" ${!canAnalyze || S.busy ? "disabled" : ""}>
+        ${S.busy ? `<span class="spin"></span> 분석 중… (보통 20~60초)` : S.shots.length ? "✨ 캡처 읽고 분석하기" : "✨ 입력한 기록으로 분석하기"}</button>
+      ${S.busy ? `<button class="btn w-full" data-act="stop">그만두기</button>` : ""}
+      ${S.err ? `<p class="small" role="alert" style="color:var(--danger)">${esc(S.err)}</p>` : ""}
+      <p class="faint tiny">분석은 내 Claude 계정 사용량을 써요. 처음 한 번은 허용할지 물어봐요.</p>`;
+  }
+
+  return `<div class="row" style="justify-content:space-between"><h1>${d.isNew ? "새 운동 기록" : "기록 수정"}</h1><button class="muted small" data-act="cancel">취소</button></div>
+  <section class="stack"><h2>운동 종류</h2>
+    <div class="type-grid">${TYPES.map((t) => `<button class="chip" data-act="setType" data-v="${t.id}" aria-pressed="${d.type === t.id}">${t.emoji} ${t.label}</button>`).join("")}</div>
+  </section>
+  <div class="grid2">
+    <label class="field"><span>날짜</span><input class="input" type="date" id="f-date" data-f="date" value="${esc(d.date)}"></label>
+    <label class="field"><span>시작 시각</span><input class="input" type="time" id="f-time" data-f="startTime" value="${esc(d.startTime || "")}"></label>
+  </div>
+  ${exSection}
+  <section class="card">
+    <div class="stack" style="gap:4px"><h2>애플워치 캡처</h2>
+      <p class="faint small">아이폰 피트니스 앱 → 운동 상세 화면을 캡처해서 넣어 주세요. 요약·심박수·심박수 영역·랩 화면을 여러 장(최대 6장) 넣으면 더 정확해요.</p></div>
+    ${S.canSample === false ? "" : S.canImages ? `<div class="shots">
+      ${S.shots.map((s) => `<div class="shot"><img src="${s.url}" alt="운동 캡처"><button aria-label="캡처 빼기" data-act="shotDel" data-id="${s.id}">✕</button></div>`).join("")}
+      ${S.shots.length < 6 ? `<button class="add-shot" data-act="shotAdd"><span style="font-size:20px">＋</span>캡처 추가</button>` : ""}
+    </div>` : `<p class="faint small">${S.canSample === null ? "캡처 분석 준비 중…" : "이 화면에서는 이미지를 보낼 수 없어요. 수치를 직접 입력하거나 메모로 분석해 주세요."}</p>`}
+    <label class="field"><span>메모 (선택)</span><textarea class="input" id="f-memo" data-f="memo" placeholder="${isSwim ? "예: 자유형 위주, 접영 드릴 / 오늘 숨이 좀 찼음" : "예: 오늘 하체 날, 무릎 컨디션 좋음 / 트레이너가 자세 교정해 줌"}">${esc(d.memo)}</textarea></label>
+    ${analyzeArea}
+  </section>
+  ${d.analysis ? analysisCard(d.analysis) : ""}
+  <section class="card">
+    <div class="stack" style="gap:2px"><h2>운동 수치</h2><p class="faint small">분석하면 자동으로 채워져요. 직접 고쳐도 됩니다.</p></div>
+    <div class="grid2">
+      ${nf("운동 시간 (분)", "duration_min")}${nf("활동 칼로리 (kcal)", "active_kcal")}
+      ${nf("총 칼로리 (kcal)", "total_kcal")}${nf("평균 심박 (bpm)", "avg_hr")}
+      ${nf("최대 심박 (bpm)", "max_hr")}${nf("최저 심박 (bpm)", "min_hr")}
+      ${isSwim ? `${nf("거리 (m)", "distance_m")}${nf("랩 수", "laps")}${nf("풀 길이 (m)", "pool_length_m")}
+        <label class="field"><span>평균 페이스 (분:초/100m)</span><input class="input num" id="m-pace" inputmode="numeric" placeholder="2:30" data-pace="1" value="${paceText(m.avg_pace_sec_per_100m)}"></label>` : ""}
+    </div>
+    <div class="stack" style="gap:4px"><span class="muted small">심박수 영역별 시간 (분)</span>
+      <div class="zones">${ZONE_KEYS.map((k, i) => `<label class="center"><span class="faint tiny">영역 ${i + 1}</span><input class="input num" id="z-${k}" inputmode="decimal" placeholder="–" data-z="${k}" value="${m.hr_zones?.[k] ?? ""}"></label>`).join("")}</div>
+    </div>
+  </section>
+  <div class="savebar"><button class="btn flex1" data-act="cancel">취소</button><button class="btn btn-primary flex2" data-act="save" ${S.busy ? "disabled" : ""}>저장</button></div>`;
+}
+
+/* ---------- 설정 ---------- */
+function viewSettings() {
+  const where = S.store === "local" ? "이 브라우저에만" : "claude.ai의 이 페이지에";
+  return `<h1>설정</h1>
+  <section class="card"><h2>저장 위치</h2>
+    <p class="muted small">기록은 ${where} 저장돼요 (현재 ${S.workouts.length}개). ${S.store === "local" ? "" : "아이폰·컴퓨터 어디서 열어도 같은 기록이 보이고, 링크를 공유해도 다른 사람은 내 기록을 볼 수 없어요."}</p>
+  </section>
+  <section class="card"><h2>백업</h2>
+    <p class="faint small">기록을 JSON 파일로 내보내거나, 예전에 내보낸 파일(memyma 백업)을 불러올 수 있어요.</p>
+    <div class="row"><button class="btn flex1" data-act="export" ${S.workouts.length ? "" : "disabled"}>내보내기</button><button class="btn flex1" data-act="import">불러오기</button></div>
+  </section>
+  <section class="card"><h2>아이폰 홈 화면에 두기</h2>
+    <p class="muted small">Claude 앱의 Artifacts 목록에서 이 페이지를 고정해 두거나, Safari에서 이 페이지 링크를 열고 공유 → 홈 화면에 추가하면 바로 열 수 있어요.</p>
+  </section>`;
+}
+
+/* ---------- 차트 ---------- */
+function niceMax(v) { if (v <= 0) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+function topRounded(x, y, w, h, r) { const rr = Math.min(r, w / 2, h); return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`; }
+
+function mountCharts() {
+  document.querySelectorAll(".chart[data-chart]").forEach((el) => {
+    const c = CHARTS[el.dataset.chart]; if (!c) return;
+    const W = Math.max(220, el.clientWidth);
+    const geo = c.kind === "stack" ? drawStack(el, c, W) : drawLine(el, c, W);
+    const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; el.appendChild(tip);
+    const show = (ev) => {
+      const r = el.getBoundingClientRect(); const x = ev.clientX - r.left;
+      const i = geo.indexAt(x); if (i == null) { tip.hidden = true; return; }
+      tip.innerHTML = geo.tipHtml(i); tip.hidden = false;
+      const left = Math.min(Math.max(geo.xOf(i), 80), W - 80);
+      tip.style.left = left + "px"; tip.style.top = geo.yOf(i) - 8 + "px";
+      geo.highlight(i);
+    };
+    el.addEventListener("pointermove", show);
+    el.addEventListener("pointerdown", show);
+    el.addEventListener("pointerleave", () => { tip.hidden = true; geo.highlight(null); });
+  });
+}
+
+function drawStack(el, c, W) {
+  const H = 180, pl = 34, pr = 6, pt = 10, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
+  const totals = c.data.map((d) => c.series.reduce((s, k) => s + (d.values[k.key] || 0), 0));
+  const max = niceMax(Math.max(...totals, 1)), slot = iw / c.data.length, bw = Math.min(28, slot * 0.6);
+  const y = (v) => pt + ih - (v / max) * ih;
+  let s = `<svg width="${W}" height="${H}" role="img" aria-label="주별 운동 시간">`;
+  for (const t of [0, max / 2, max]) s += `<line x1="${pl}" x2="${W - pr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${pl - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="var(--text-3)">${Math.round(t)}</text>`;
+  c.data.forEach((d, i) => {
+    const cx = pl + slot * i + slot / 2; let acc = 0;
+    const present = c.series.filter((k) => (d.values[k.key] || 0) > 0);
+    s += `<g class="bar" data-i="${i}">`;
+    present.forEach((k, j) => {
+      const y0 = y(acc); acc += d.values[k.key]; const y1 = y(acc); const h = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0));
+      s += j === present.length - 1 ? `<path d="${topRounded(cx - bw / 2, y1, bw, h, 4)}" fill="${k.color}"/>` : `<rect x="${cx - bw / 2}" y="${y1}" width="${bw}" height="${h}" fill="${k.color}"/>`;
+    });
+    s += `</g><text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--text-3)">${d.label}</text>`;
+  });
+  el.innerHTML = s + "</svg>";
+  const bars = el.querySelectorAll(".bar");
+  return {
+    indexAt: (x) => { const i = Math.floor((x - pl) / slot); return i >= 0 && i < c.data.length ? i : null; },
+    xOf: (i) => pl + slot * i + slot / 2,
+    yOf: (i) => y(totals[i]),
+    highlight: (i) => bars.forEach((b, k) => b.setAttribute("opacity", i == null || i === k ? "1" : "0.5")),
+    tipHtml: (i) => `<div style="font-weight:700">${c.data[i].sub} · ${Math.round(totals[i])}${c.unit}</div>` +
+      (c.series.filter((k) => (c.data[i].values[k.key] || 0) > 0).map((k) => `<div class="r"><span class="sw" style="background:${k.color}"></span><span class="muted">${k.label}</span><span class="v">${Math.round(c.data[i].values[k.key])}${c.unit}</span></div>`).join("") || `<div class="muted">기록 없음</div>`),
+  };
+}
+
+function drawLine(el, c, W) {
+  const H = 180, pl = 34, pr = 34, pt = 12, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
+  const all = c.data.flatMap((d) => c.series.map((k) => d.values[k.key])).filter((v) => v != null);
+  const lo = Math.max(0, Math.floor((Math.min(...all) - 5) / 10) * 10), hi = Math.ceil((Math.max(...all) + 5) / 10) * 10;
+  const n = c.data.length;
+  const x = (i) => pl + (n === 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const y = (v) => pt + ih - ((v - lo) / (hi - lo || 1)) * ih;
+  const every = Math.ceil(n / 6);
+  let s = `<svg width="${W}" height="${H}" role="img" aria-label="추이 그래프">`;
+  for (const t of [lo, Math.round((lo + hi) / 2), hi]) s += `<line x1="${pl}" x2="${W - pr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${pl - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="var(--text-3)">${t}</text>`;
+  c.data.forEach((d, i) => { if (i === n - 1 || (i % every === 0 && n - 1 - i >= Math.ceil(every / 2))) s += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--text-3)">${d.axis}</text>`; });
+  s += `<line class="cross" x1="0" x2="0" y1="${pt}" y2="${pt + ih}" stroke="var(--text-3)" stroke-dasharray="3 3" visibility="hidden"/>`;
+  for (const k of c.series) {
+    const pts = c.data.map((d, i) => (d.values[k.key] != null ? [x(i), y(d.values[k.key]), d.values[k.key]] : null)).filter(Boolean);
+    if (!pts.length) continue;
+    s += `<polyline points="${pts.map((p) => p[0] + "," + p[1]).join(" ")}" fill="none" stroke="${k.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    s += pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${k.color}" stroke="var(--surface)" stroke-width="2"/>`).join("");
+    const L = pts[pts.length - 1]; s += `<text x="${L[0] + 7}" y="${L[1] + 4}" font-size="10" fill="var(--text-2)">${kg(L[2])}</text>`;
+  }
+  el.innerHTML = s + "</svg>";
+  const cross = el.querySelector(".cross");
+  return {
+    indexAt: (px) => { if (px < pl - 10 || px > W - pr + 10) return null; return n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round(((px - pl) / iw) * (n - 1)))); },
+    xOf: x,
+    yOf: () => pt + 12,
+    highlight: (i) => { if (i == null) cross.setAttribute("visibility", "hidden"); else { cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible"); } },
+    tipHtml: (i) => `<div style="font-weight:700">${esc(c.data[i].label)}</div>` + c.series.map((k) => `<div class="r"><span class="sw" style="background:${k.color};border-radius:50%"></span><span class="muted">${k.label}</span><span class="v">${c.data[i].values[k.key] != null ? kg(c.data[i].values[k.key]) + " " + c.unit : "–"}</span></div>`).join(""),
+  };
+}
+let resizeT; window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.view === "home") mountCharts(); }, 150); });
+
+/* ---------- 분석 ---------- */
+let analyzeCtl = null;
+async function analyze() {
+  const d = S.draft, isSwim = typeInfo(d.type).cat === "swim";
+  S.busy = true; S.err = null; render();
+  const exLines = (list) => cleanEx(list).map((e) => `${e.name}: ${summarizeSets(e.sets)}`);
+  const recent = othersOf(d).filter((w) => w.type === d.type).slice(0, 5).map((w) => ({
+    date: w.date, duration_min: w.metrics?.duration_min ?? null, active_kcal: w.metrics?.active_kcal ?? null, avg_hr: w.metrics?.avg_hr ?? null,
+    max_hr: w.metrics?.max_hr ?? null, distance_m: w.metrics?.distance_m ?? null, exercises: isSwim ? undefined : exLines(w.exercises),
+  }));
+  const hasMetrics = METRIC_KEYS.some((k) => d.metrics[k] != null) || d.metrics.hr_zones;
+  const prompt = `너는 애플워치 운동 기록을 읽고 분석해 주는 운동 코치야. 사용자는 수영(강습/자유수영)과 헬스(PT 수업/개인운동)를 한다.
+
+할 일:
+1. ${S.shots.length ? `첨부한 애플워치/아이폰 피트니스 앱 캡처 ${S.shots.length}장(모두 같은 운동 하나)에서 수치를 정확히 읽어 metrics에 넣는다. 한국어/영어 UI 모두 가능 (활동 킬로칼로리 = Active Kilocalories, 평균 심박수 = Avg. Heart Rate 등).` : "캡처는 없다. 아래 '직접 입력한 수치'를 그대로 metrics로 돌려준다."}
+   화면에 없는 값은 추측하지 말고 null. 단위 변환(시간→분, km→m, 페이스→100m당 초)은 한다. 예: 1:05:30 → 65.5분, 2'30"/100m → 150.
+2. analysis는 친근한 한국어 존댓말로, 수치를 근거로 짧고 구체적으로 쓴다.
+   - 심박 영역 분포, 평균/최대 심박, 시간 대비 칼로리, (수영) 거리·페이스를 해석한다.
+   - 강습/PT는 코치가 강도를 정하므로 꾸준함과 회복 관점, 자유수영/개인운동은 스스로 조절한 강도 관점으로 본다.
+   - 헬스 종목·세트가 있으면 종목 구성(부위 균형), 무게·횟수·총 볼륨을 보고, 최근 기록의 같은 종목과 비교해 무게/횟수 변화를 짚고 다음에 시도할 무게나 횟수를 구체적으로 제안한다.
+   - 최근 기록이 있으면 comparison에 변화를 숫자로 적는다. 없으면 빈 문자열.
+   - 의학적 진단은 하지 않는다.
+
+오늘 날짜: ${todayStr()}
+운동 종류: ${typeInfo(d.type).label}
+사용자 메모: ${d.memo.trim() || "없음"}
+${!S.shots.length && hasMetrics ? `직접 입력한 수치: ${JSON.stringify(d.metrics)}` : ""}
+${!isSwim && cleanEx(d.exercises).length ? `오늘 한 종목·세트:\n${exLines(d.exercises).map((x) => "- " + x).join("\n")}` : ""}
+최근 같은 종류 운동 기록(최신순): ${recent.length ? JSON.stringify(recent) : "없음"}
+
+아래 형태의 JSON 객체 하나만 답한다. 숫자는 숫자로, 모르는 값은 null.
+{"date":"YYYY-MM-DD 또는 null","start_time":"HH:MM 또는 null",
+ "metrics":{"duration_min":null,"active_kcal":null,"total_kcal":null,"avg_hr":null,"max_hr":null,"min_hr":null,"distance_m":null,"laps":null,"pool_length_m":null,"avg_pace_sec_per_100m":null,
+   "hr_zones":{"zone1_min":null,"zone2_min":null,"zone3_min":null,"zone4_min":null,"zone5_min":null} 또는 null},
+ "analysis":{"summary":"2~3문장 요약","intensity":"easy|moderate|hard|very_hard","highlights":["눈에 띄는 점 2~4개"],"suggestions":["다음 운동 제안 1~3개"],"comparison":"","unreadable":["읽지 못한 항목"]}}`;
+
+  analyzeCtl = new AbortController();
+  try {
+    const r = await SAMPLE.json(prompt, { images: S.shots.length ? S.shots.map((s) => s.file) : undefined, signal: analyzeCtl.signal, cache: false });
+    applyResult(r);
+  } catch (e) {
+    const code = e?.code;
+    if (code !== "cancelled") S.err = ({
+      not_granted: "Claude 사용을 허용하지 않아서 분석할 수 없어요. 수치는 직접 입력해서 저장할 수 있어요.",
+      sampling_disabled: "이 계정에서는 AI 분석을 쓸 수 없어요.",
+      rate_limited: "지금은 Claude 사용량이 많아요. 잠시 뒤에 다시 눌러 주세요.",
+      image_rejected: "읽을 수 없는 이미지가 있어요. 다른 캡처로 바꿔 주세요.",
+      images_unavailable: "이 화면에서는 이미지를 보낼 수 없어요.",
+      refused: "이 내용은 분석할 수 없었어요. 캡처나 메모를 바꿔서 다시 시도해 주세요.",
+      invalid_json: "분석 결과를 읽지 못했어요. 한 번 더 눌러 주세요.",
+      session_expired: "claude.ai에 다시 로그인해 주세요.",
+    })[code] || "분석 중 문제가 생겼어요. 잠시 뒤에 다시 눌러 주세요.";
+    if (code === "not_granted" || code === "sampling_disabled") S.canSample = false;
+  } finally {
+    S.busy = false; analyzeCtl = null;
+    if (S.view === "edit") render();
+  }
+}
+function applyResult(r) {
+  const d = S.draft;
+  if (!r || typeof r !== "object") { S.err = "분석 결과를 읽지 못했어요. 한 번 더 눌러 주세요."; return; }
+  const m = r.metrics || {};
+  for (const k of METRIC_KEYS) { const v = toNum(m[k]); if (v != null) d.metrics[k] = v; }
+  if (m.hr_zones && typeof m.hr_zones === "object") {
+    const z = {}; let any = false;
+    for (const k of ZONE_KEYS) { z[k] = toNum(m.hr_zones[k]); if (z[k] != null) any = true; }
+    if (any) d.metrics.hr_zones = z;
+  }
+  if (d.isNew && /^\d{4}-\d{2}-\d{2}$/.test(r.date || "")) d.date = r.date;
+  if (/^\d{1,2}:\d{2}$/.test(r.start_time || "")) d.startTime = r.start_time.padStart(5, "0");
+  const a = r.analysis || {};
+  const arr = (x) => (Array.isArray(x) ? x.map(String).filter(Boolean) : []);
+  d.analysis = {
+    summary: String(a.summary || ""),
+    intensity: INTENSITY[a.intensity] ? a.intensity : "moderate",
+    highlights: arr(a.highlights), suggestions: arr(a.suggestions),
+    comparison: String(a.comparison || ""), unreadable: arr(a.unreadable),
+  };
+}
+
+/* ---------- 저장 ---------- */
+async function saveDraft() {
+  const d = S.draft;
+  if (!d.date) { toast("날짜를 넣어 주세요."); return; }
+  const now = new Date().toISOString();
+  const isSwim = typeInfo(d.type).cat === "swim";
+  const w = {
+    id: d.id, type: d.type, date: d.date, startTime: d.startTime || null, memo: d.memo || "",
+    metrics: d.metrics, exercises: isSwim ? [] : cleanEx(d.exercises), analysis: d.analysis || null,
+    createdAt: d.createdAt || now, updatedAt: now,
+  };
+  try {
+    await persist(w);
+    toast("저장했어요");
+    go("detail", { detailId: w.id, draft: null });
+  } catch (e) {
+    toast(e?.code === "quota_exceeded" ? "저장 공간이 가득 찼어요." : "저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");
+  }
+}
+
+/* ---------- 모달 / 토스트 ---------- */
+let toastT;
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2600); }
+let confirmYes = null;
+function askConfirm(text, yesLabel, onYes) {
+  confirmYes = onYes;
+  $("#overlay").innerHTML = `<div class="overlay" data-act="confirmNo"><div class="sheet" role="dialog" aria-modal="true">
+    <p style="font-size:16px;font-weight:700">${esc(text)}</p>
+    <div class="row"><button class="btn flex1" data-act="confirmNo">취소</button><button class="btn flex1 btn-primary" style="background:var(--danger);border-color:var(--danger)" data-act="confirmYes">${esc(yesLabel)}</button></div>
+  </div></div>`;
+}
+function closeConfirm() { $("#overlay").innerHTML = ""; confirmYes = null; if (S.dirty) render(); }
+
+/* ---------- 백업 ---------- */
+async function doExport() {
+  const data = JSON.stringify(S.workouts, null, 2);
+  if (DOWNLOADS) {
+    try { await DOWNLOADS.save({ filename: `memyma-${todayStr()}.json`, data }); return; }
+    catch (e) { if (e?.code === "cancelled" || e?.code === "declined") return; }
+  }
+  // 저장을 못 하는 화면: 복사할 수 있게 보여 줌
+  $("#overlay").innerHTML = `<div class="overlay"><div class="sheet" role="dialog" aria-modal="true">
+    <p style="font-weight:700">백업 내용</p><p class="faint small">이 화면에서는 파일 저장이 안 돼요. 아래 내용을 복사해서 메모 앱 등에 보관해 주세요.</p>
+    <textarea class="input" id="export-text" readonly style="min-height:180px;font-size:12px">${esc(data)}</textarea>
+    <div class="row"><button class="btn flex1" data-act="confirmNo">닫기</button><button class="btn btn-primary flex1" data-act="copyExport">복사</button></div>
+  </div></div>`;
+}
+async function doImport(file) {
+  let list;
+  try { list = JSON.parse(await file.text()); } catch { list = null; }
+  if (!Array.isArray(list) || !list.every((w) => w && w.id && w.date && w.type && w.metrics)) { toast("memyma 백업 파일이 아니에요."); return; }
+  toast(`${list.length}개 불러오는 중…`);
+  let n = 0;
+  for (const w of list) {
+    try {
+      const clean = { exercises: [], analysis: null, memo: "", startTime: null, ...w };
+      if (DB) await DB.collection("workouts").doc(String(w.id)).set(clone(clean));
+      else { const i = S.workouts.findIndex((x) => x.id === w.id); if (i >= 0) S.workouts[i] = clean; else S.workouts.push(clean); }
+      n++;
+    } catch { /* 건너뜀 */ }
+  }
+  if (!DB) { S.workouts = sortW(S.workouts); saveLocal(); }
+  toast(`${n}개 기록을 불러왔어요.`);
+  render();
+}
+
+/* ---------- 이벤트 ---------- */
+document.addEventListener("click", (ev) => {
+  const el = ev.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id, v = el.dataset.v, d = S.draft;
+  const exOf = () => d.exercises.find((e) => e.id === id);
+  switch (act) {
+    case "go": go(el.dataset.view); break;
+    case "new": S.draft = newDraft(); S.busy = false; go("edit"); break;
+    case "open": go("detail", { detailId: id }); break;
+    case "edit": S.draft = newDraft(S.workouts.find((w) => w.id === id)); go("edit"); break;
+    case "cancel":
+      if (analyzeCtl) analyzeCtl.abort();
+      go(d && !d.isNew ? "detail" : "home", { draft: null, detailId: d && !d.isNew ? d.id : S.detailId });
+      break;
+    case "homeFilter": S.homeFilter = v; render(); break;
+    case "listFilter": S.listFilter = v; render(); break;
+    case "pickEx": S.progressName = v; render(); break;
+    case "askDelete":
+      askConfirm("이 기록을 삭제할까요?", "삭제", async () => {
+        try { await removeW(id); toast("삭제했어요"); go("list"); } catch { toast("삭제하지 못했어요. 다시 시도해 주세요."); }
+      });
+      break;
+    case "confirmYes": { const f = confirmYes; closeConfirm(); f && f(); break; }
+    case "confirmNo": if (ev.target === el || el.tagName === "BUTTON") closeConfirm(); break;
+    case "copyExport": {
+      const ta = $("#export-text");
+      navigator.clipboard.writeText(ta.value).then(() => toast("복사했어요"), () => { ta.focus(); ta.select(); toast("길게 눌러 복사해 주세요"); });
+      break;
+    }
+    case "setType": d.type = v; render(); break;
+    case "shotAdd": $("#shot-input").click(); break;
+    case "shotDel": { const s = S.shots.find((x) => x.id === id); if (s) URL.revokeObjectURL(s.url); S.shots = S.shots.filter((x) => x.id !== id); render(); break; }
+    case "analyze": if (!S.busy && SAMPLE) analyze(); break;
+    case "stop": if (analyzeCtl) analyzeCtl.abort(); break;
+    case "save": saveDraft(); break;
+    case "exAdd": { const nid = uid(); d.exercises.push({ id: nid, name: "", sets: [{ weight_kg: null, reps: null }] }); render(); $("#ex-" + nid)?.focus(); break; }
+    case "exDel": {
+      const e = exOf(); if (!e) break;
+      const empty = !e.name && e.sets.every((s) => s.weight_kg == null && s.reps == null);
+      const del = () => { d.exercises = d.exercises.filter((x) => x.id !== id); render(); };
+      if (empty) del(); else askConfirm(`'${e.name || "이 종목"}'을(를) 지울까요?`, "지우기", del);
+      break;
+    }
+    case "exMove": { const i = d.exercises.findIndex((e) => e.id === id), j = i + Number(v); if (j < 0 || j >= d.exercises.length) break; [d.exercises[i], d.exercises[j]] = [d.exercises[j], d.exercises[i]]; render(); break; }
+    case "setAdd": { const e = exOf(); if (!e) break; const last = e.sets[e.sets.length - 1] || { weight_kg: null, reps: null }; e.sets.push({ ...last }); render(); break; }
+    case "setDel": { const e = exOf(); if (!e) break; e.sets.splice(Number(v), 1); render(); break; }
+    case "loadLast": { const w = lastGymWith(d); if (!w) break; for (const e of w.exercises) d.exercises.push({ id: uid(), name: e.name, sets: e.sets.map((s) => ({ ...s })) }); render(); toast(`${fmtDate(w.date)} 종목을 불러왔어요`); break; }
+    case "export": doExport(); break;
+    case "import": $("#import-input").click(); break;
+  }
+});
+
+document.addEventListener("input", (ev) => {
+  const el = ev.target, d = S.draft; if (!d || S.view !== "edit") return;
+  const val = el.value;
+  if (el.dataset.f) d[el.dataset.f] = val;
+  else if (el.dataset.m) d.metrics[el.dataset.m] = num(val);
+  else if (el.dataset.pace) { const m = val.trim().match(/^(\d+)[:'](\d{1,2})"?$/); d.metrics.avg_pace_sec_per_100m = !val.trim() ? null : m ? Number(m[1]) * 60 + Number(m[2]) : d.metrics.avg_pace_sec_per_100m; }
+  else if (el.dataset.z) {
+    const z = d.metrics.hr_zones || { zone1_min: null, zone2_min: null, zone3_min: null, zone4_min: null, zone5_min: null };
+    z[el.dataset.z] = num(val);
+    d.metrics.hr_zones = ZONE_KEYS.every((k) => z[k] == null) ? null : z;
+  } else if (el.dataset.exname) {
+    const e = d.exercises.find((x) => x.id === el.dataset.exname); if (e) { e.name = val; const h = $("#hint-" + e.id); if (h) h.textContent = exHint(d, e); }
+  } else if (el.dataset.set) {
+    const [eid, j, field] = el.dataset.set.split(":"); const e = d.exercises.find((x) => x.id === eid);
+    if (e && e.sets[j]) { e.sets[j][field] = num(val.replace(",", ".")); const s = $("#ex-summary"); if (s) s.textContent = exSummaryText(d); }
+  }
+  // 분석 버튼 활성화 상태만 갱신
+  const btn = document.querySelector('[data-act="analyze"]');
+  if (btn && !S.busy) {
+    const isSwim = typeInfo(d.type).cat === "swim";
+    btn.disabled = !(S.shots.length > 0 || METRIC_KEYS.some((k) => d.metrics[k] != null) || (!isSwim && cleanEx(d.exercises).length > 0));
+  }
+});
+
+$("#shot-input").addEventListener("change", (ev) => {
+  const files = [...(ev.target.files || [])].filter((f) => f.type.startsWith("image/"));
+  for (const f of files) if (S.shots.length < 6) S.shots.push({ id: uid(), file: f, url: URL.createObjectURL(f) });
+  ev.target.value = "";
+  render();
+});
+$("#import-input").addEventListener("change", (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) doImport(f); });
+
+/* ---------- 시작 ---------- */
+render();
+initStore();
+initCaps();
+</script>
