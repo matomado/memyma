@@ -59,7 +59,7 @@
       </div>
 
       <div class="card">
-        <h2>완납 예상 (이자 포함)</h2>
+        <h2>완납 예상 (상환 계획 기준)</h2>
         <div id="s-forecast"></div>
       </div>
 
@@ -77,13 +77,28 @@
     <!-- 빚 -->
     <section id="tab-debts" class="panel">
       <div class="card">
+        <h2>상환 계획</h2>
+        <form id="form-plan" class="form">
+          <label>월급에서 매달 빚 갚는 데 쓸 돈<input name="salary" inputmode="numeric" placeholder="500,000" /></label>
+          <label>부수입 중 빚 갚는 데 쓸 비율 (%)<input name="sideRatio" inputmode="decimal" placeholder="100" /></label>
+          <p class="hint full" id="plan-side-hint"></p>
+          <div class="full">
+            <div class="plan-order-head">갚는 순서 <small>(위에서부터 몰아서 갚아요)</small></div>
+            <ul class="list" id="plan-order"></ul>
+          </div>
+          <button type="submit">계획 저장</button>
+        </form>
+      </div>
+
+      <div class="card">
         <h2>빚 추가</h2>
         <form id="form-debt" class="form">
           <label>이름<input name="name" required placeholder="예: 학자금 대출" /></label>
-          <label>원래 금액 <small>(또는 현재 잔액)</small><input name="principal" required inputmode="numeric" placeholder="10,000,000" /></label>
-          <label>시작일<input name="startDate" type="date" required /></label>
+          <label>처음 빌린 돈 <small>(또는 현재 잔액)</small><input name="principal" required inputmode="numeric" placeholder="10,000,000" /></label>
+          <label>이미 갚은 돈 <small>(선택)</small><input name="paidBefore" inputmode="numeric" placeholder="0" /></label>
+          <label>기록 시작일<input name="startDate" type="date" required /></label>
           <label>연이율 (%)<input name="rate" inputmode="decimal" placeholder="4.5" /></label>
-          <label>월 상환 계획 <small>(선택)</small><input name="monthly" inputmode="numeric" placeholder="비우면 최근 평균" /></label>
+          <label class="check"><input type="checkbox" name="interestOnly" /> 지금은 이자만 내는 중</label>
           <button type="submit">추가</button>
         </form>
       </div>
@@ -94,7 +109,12 @@
           <label>어떤 빚<select name="debtId" required></select></label>
           <label>갚은 금액<input name="amount" required inputmode="numeric" placeholder="300,000" /></label>
           <label>날짜<input name="date" type="date" required /></label>
-          <label>메모<input name="memo" placeholder="선택" /></label>
+          <label>어디서 난 돈<select name="source">
+            <option value="salary">월급</option>
+            <option value="side">부수입</option>
+            <option value="other">기타</option>
+          </select></label>
+          <label class="full">메모<input name="memo" placeholder="선택" /></label>
           <button type="submit">기록</button>
         </form>
       </div>
