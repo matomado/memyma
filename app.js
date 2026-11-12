@@ -111,14 +111,24 @@
     return ids.map((id) => state.debts.find((d) => d.id === id));
   }
 
-  const sideIncomeAvg = () => {
-    const last3 = monthsBack(3);
-    return sum(state.incomes.filter((i) => last3.includes(monthKey(i.date))), (i) => i.amount) / 3;
+  // 평균 낼 기간: 최근 3개월. 기록을 시작한 지 3개월이 안 됐으면 시작한 달부터
+  function recentMonths() {
+    const starts = [...state.debts.map((d) => d.startDate), ...state.payments.map((p) => p.date), ...state.incomes.map((i) => i.date)].filter(Boolean).sort();
+    const months = monthsBack(3);
+    if (!starts.length) return months;
+    const first = monthKey(starts[0]);
+    const within = months.filter((m) => m >= first);
+    return within.length ? within : months.slice(-1);
+  }
+  const avgOver = (items, f = (x) => x.amount) => {
+    const months = recentMonths();
+    return sum(items.filter((x) => months.includes(monthKey(x.date))), f) / months.length;
   };
-  const recentPaymentAvg = (debtId) => {
-    const last3 = monthsBack(3);
-    return sum(state.payments.filter((p) => p.debtId === debtId && last3.includes(monthKey(p.date))), (p) => p.amount) / 3;
-  };
+  const sideIncomeAvg = () => avgOver(state.incomes);
+  const salaryPaymentAvg = () => avgOver(state.payments.filter((p) => p.source === 'salary'));
+  const recentPaymentAvg = (debtId) => avgOver(state.payments.filter((p) => p.debtId === debtId));
+  // 월급 상환액: 정해 두면 그 금액, 비워 두면 실제 월급 상환 기록 평균
+  const salaryForPlan = () => (state.plan.salary > 0 ? { amount: state.plan.salary, auto: false } : { amount: salaryPaymentAvg(), auto: true });
 
   // 한 달씩 굴려 보는 상환 시뮬레이션
   //  1) 이자 붙이기 (이자만 내는 빚은 이자를 따로 내니까 잔액에 안 붙음)
@@ -128,14 +138,15 @@
     const plan = state.plan;
     const sideAvg = sideIncomeAvg();
     const side = sideAvg * (plan.sideRatio ?? 100) / 100;
-    const extra = (plan.salary || 0) + side;
+    const salary = salaryForPlan();
+    const extra = salary.amount + side;
     const debts = orderedDebts().map((d) => {
       let fixed = d.monthly || 0;
       // 계획이 없으면 그 빚의 최근 상환 평균으로 대신 계산
       if (!extra && !fixed && !d.interestOnly) fixed = recentPaymentAvg(d.id);
       return { d, bal: remainingFor(d), r: (d.rate || 0) / 100 / 12, fixed, interest: 0, months: null };
     });
-    const result = { sideAvg, side, extra, fixedTotal: sum(debts, (x) => x.fixed), byId: {}, totalInterest: 0, months: 0 };
+    const result = { sideAvg, side, salary, extra, fixedTotal: sum(debts, (x) => x.fixed), byId: {}, totalInterest: 0, months: 0 };
 
     let active = debts.filter((x) => x.bal > 0.5);
     debts.filter((x) => x.bal <= 0.5).forEach((x) => (x.months = 0));
@@ -250,8 +261,9 @@
 
     let head = '';
     if (!sim.extra && !sim.fixedTotal) {
-      head = `<p class="big-forecast">상환 계획을 정해 주세요</p>
-        <p class="hint">빚 탭 맨 위 <b>상환 계획</b>에 월급에서 매달 갚을 돈을 넣으면 완납 시점이 나와요.</p>`;
+      head = `<p class="big-forecast">갚은 기록이 쌓이면 완납 시점이 나와요</p>
+        <p class="hint">월급이나 부수입으로 갚은 기록이 쌓이면 그 평균으로 완납 시점을 계산해요.
+        정해 둔 금액이 있으면 빚 탭 맨 위 <b>상환 계획</b>에 넣어도 돼요.</p>`;
     } else if (blocking.length) {
       head = `<p class="big-forecast">지금 계획으로는 다 못 갚아요</p>
         <p class="hint warn">매달 갚는 돈이 이자보다 적어요. 상환 계획 금액을 늘려 보세요.</p>`;
@@ -263,8 +275,10 @@
       head = `<p class="big-forecast">이자만 내는 중이에요</p>`;
     }
     if (sim.extra) {
-      head += `<p class="hint">매달 ${won(sim.extra)}을 순서대로 갚는 계산이에요
-        (월급 ${won(state.plan.salary || 0)} + 부수입 ${won(sim.side)}${state.plan.sideRatio < 100 ? ` · 최근 평균의 ${state.plan.sideRatio}%` : ' · 최근 3개월 평균'}).</p>`;
+      const n = recentMonths().length;
+      head += `<p class="hint">매달 ${won(sim.extra)}을 순서대로 갚는 계산이에요:
+        월급 ${won(sim.salary.amount)}${sim.salary.auto ? ` (최근 ${n}개월 상환 기록 평균)` : ''}
+        + 부수입 ${won(sim.side)} (최근 ${n}개월 평균${state.plan.sideRatio < 100 ? `의 ${state.plan.sideRatio}%` : ''}).</p>`;
     }
     const list = res.map(({ d, f }, idx) => `<li>
         <div class="left"><div class="t">${idx + 1}. ${esc(d.name)}</div>
@@ -431,7 +445,8 @@
       form.salary.value = state.plan.salary ? state.plan.salary.toLocaleString('ko-KR') : '';
       form.sideRatio.value = state.plan.sideRatio ?? 100;
     }
-    $('#plan-side-hint').textContent = `최근 3개월 부수입 평균: 월 ${won(sideIncomeAvg())}`;
+    const n = recentMonths().length;
+    $('#plan-side-hint').textContent = `최근 ${n}개월 평균 — 월급으로 갚은 돈: 월 ${won(salaryPaymentAvg())} · 부수입: 월 ${won(sideIncomeAvg())}`;
     const debts = orderedDebts();
     $('#plan-order').innerHTML = debts.length
       ? debts.map((d, i) => `<li>
