@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>memyma · 워크리스트</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <div>
+        <h1>memyma</h1>
+        <p class="sub" id="today"></p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <form id="add-form" class="add" autocomplete="off">
+      <input id="title" class="add-title" placeholder="할 일을 입력하고 Enter" required maxlength="200" />
+      <div class="add-opts">
+        <select id="priority" title="우선순위">
+          <option value="2">보통</option>
+          <option value="3">높음</option>
+          <option value="1">낮음</option>
+        </select>
+        <input id="due" type="date" title="마감일" />
+        <input id="tag" placeholder="프로젝트/태그" maxlength="30" list="tag-list" />
+        <datalist id="tag-list"></datalist>
+        <button type="submit">추가</button>
+      </div>
+    </form>
+
+    <nav class="toolbar">
+      <div class="tabs" id="tabs">
+        <button data-view="all" class="active">전체</button>
+        <button data-view="today">오늘·지연</button>
+        <button data-view="doing">진행 중</button>
+        <button data-view="todo">대기</button>
+        <button data-view="done">완료</button>
+      </div>
+      <div class="tools">
+        <input id="search" type="search" placeholder="검색" />
+        <select id="tag-filter"><option value="">모든 태그</option></select>
+        <select id="sort">
+          <option value="smart">기본 정렬</option>
+          <option value="due">마감일순</option>
+          <option value="priority">우선순위순</option>
+          <option value="created">최근 추가순</option>
+        </select>
+      </div>
+    </nav>
+
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="empty" hidden>표시할 항목이 없어요.</p>
+
+    <footer class="foot">
+      <button id="clear-done" class="ghost">완료 항목 지우기</button>
+      <button id="export" class="ghost">내보내기</button>
+      <label class="ghost file">가져오기<input id="import" type="file" accept="application/json" hidden /></label>
+      <span class="hint">상태 버튼: 대기 → 진행 중 → 완료 · 제목 더블클릭으로 수정</span>
+    </footer>
+  </main>
+
+  <template id="item-tpl">
+    <li class="item">
+      <button class="status" title="상태 변경"></button>
+      <div class="body">
+        <div class="title"></div>
+        <div class="meta"></div>
+        <textarea class="note" placeholder="메모" rows="2" hidden></textarea>
+      </div>
+      <div class="actions">
+        <button class="note-btn" title="메모">✎</button>
+        <button class="del" title="삭제">✕</button>
+      </div>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
