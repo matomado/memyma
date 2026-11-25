@@ -1,4 +1,4 @@
-// 음식 사진 → 음식 목록 + kcal 추정 (Claude)
+// 음식 사진 또는 음식 이름 → 음식 목록 + kcal 추정 (Claude)
 import { claudeImageJSON, dataUrlToBlob } from './inbody.js';
 
 const SCHEMA = {
@@ -36,16 +36,40 @@ ${lib || '(등록된 음식 없음)'}
 - 음식 사진이 아니면 items 를 빈 배열로 두고 note 에 이유를 쓰세요.`;
 }
 
-export async function analyzeFoodPhoto({ sample, apiKey, jpeg, foods }) {
-  let out;
-  if (sample) {
-    out = await sample.json(prompt(foods) + `
+function textPrompt(text, foods) {
+  const lib = foods.map((f) => `- id=${f.id}: ${f.name} (${f.amount}${f.unit} = ${f.kcal}kcal)`).join('\n');
+  return `다이어트 중인 사람이 먹은 음식을 글로 적었습니다. 음식마다 하나씩 나누어 양과 칼로리를 알려주세요.
+
+입력: "${text.replace(/"/g, "'")}"
+
+- 여러 음식이 쉼표·띄어쓰기·줄바꿈으로 섞여 있으면 각각 따로 항목으로 만드세요.
+- 양이 적혀 있으면(예: 2개, 반 공기, 200g) 그 양으로, 없으면 한국에서 보통 먹는 1인분(반찬은 1회 제공량, 대략 작은 접시 하나)으로 정하세요.
+- 칼로리는 식약처 식품영양성분 DB 같은 한국 일반 기준에 맞춰 현실적으로 계산하세요. 볶음·전·튀김은 기름을 포함해서요.
+- 아래 자주 먹는 음식 목록과 같은 음식이면 foodId 에 그 id 를 넣고, unit 은 목록과 같은 단위로, kcal 는 목록의 kcal 를 양에 비례해 계산하세요. 아니면 foodId 는 null.
+${lib || '(등록된 음식 없음)'}
+- note 에는 기준(예: "반찬 1회 제공량 기준")을 짧게 적으세요. 음식이 아니면 items 를 빈 배열로 두세요.`;
+}
+
+const JSON_FORMAT = `
 
 반드시 JSON 하나만 답하세요. 형식:
-{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자}]}`, { images: [dataUrlToBlob(jpeg)], modelTier: 'default' });
-  } else {
-    out = await claudeImageJSON(jpeg, apiKey, prompt(foods), SCHEMA);
-  }
+{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자}]}`;
+
+export async function analyzeFoodPhoto({ sample, apiKey, jpeg, foods }) {
+  const out = sample
+    ? await sample.json(prompt(foods) + JSON_FORMAT, { images: [dataUrlToBlob(jpeg)], modelTier: 'default' })
+    : await claudeImageJSON(jpeg, apiKey, prompt(foods), SCHEMA);
+  return tidy(out, foods);
+}
+
+export async function analyzeFoodText({ sample, apiKey, text, foods }) {
+  const out = sample
+    ? await sample.json(textPrompt(text, foods) + JSON_FORMAT, { modelTier: 'default' })
+    : await claudeImageJSON(null, apiKey, textPrompt(text, foods), SCHEMA);
+  return tidy(out, foods);
+}
+
+function tidy(out, foods) {
   const ids = new Set(foods.map((f) => f.id));
   const items = (Array.isArray(out?.items) ? out.items : [])
     .filter((it) => it && typeof it.name === 'string' && isFinite(+it.kcal))

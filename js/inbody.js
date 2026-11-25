@@ -106,7 +106,7 @@ export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
   const { default: Anthropic } = await import(SDK_URL);
   // 개인용 앱: 키는 이 브라우저(localStorage)에만 저장되고 Anthropic API 로만 전송됩니다.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const data = jpegDataUrl.split(',')[1];
+  const data = jpegDataUrl ? jpegDataUrl.split(',')[1] : null;
   const res = await client.beta.messages.create({
     model: 'claude-opus-5-5',
     max_tokens: 16000,
@@ -117,7 +117,7 @@ export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
       {
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
+          ...(data ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }] : []),
           { type: 'text', text: prompt },
         ],
       },
@@ -145,6 +145,10 @@ export function dataUrlToBlob(dataUrl) {
 }
 
 /* ---------- claude.ai 에서 열었을 때: 키 없이 Claude 사용 ---------- */
+export async function sampleReady() {
+  try { return (await window.claude?.use?.('sample')) || null; } catch { return null; }
+}
+
 export async function sampleImageReady() {
   try {
     const sample = await window.claude?.use?.('sample');

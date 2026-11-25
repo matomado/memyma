@@ -6,10 +6,10 @@ import {
   initCloud, isCloud, setSaveErrorHandler,
 } from './store.js';
 import { lineChart, barChart } from './chart.js';
-import { analyzeFoodPhoto } from './food-photo.js';
+import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
-  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, analyzeWithSample, dataUrlToBlob,
+  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, sampleReady, analyzeWithSample, dataUrlToBlob,
 } from './inbody.js';
 
 /* ================= 공통 유틸 ================= */
@@ -214,7 +214,8 @@ function addFoodSheet(date, slot, label) {
   const sel = new Map(); // foodId -> qty
   const body = h(`<div>
     <label class="btn block" style="margin-bottom:10px">📷 음식 사진으로 칼로리 계산<input type="file" accept="image/*" class="photo" hidden></label>
-    <input type="text" placeholder="음식 검색" class="q" style="margin-bottom:10px">
+    <div class="row" style="margin-bottom:10px"><input type="text" placeholder="음식 검색 (예: 멸치볶음, 시금치나물)" class="q grow" enterkeyhint="search"></div>
+    <button class="btn ghost block ask-ai" style="margin-bottom:10px" hidden></button>
     <div class="food-grid"></div>
     <div class="hr"></div>
     <div class="picked"></div>
@@ -245,7 +246,10 @@ function addFoodSheet(date, slot, label) {
       b.onclick = () => { sel.has(f.id) ? sel.delete(f.id) : sel.set(f.id, 1); drawGrid(); drawPicked(); };
       grid.appendChild(b);
     });
-    if (!foods.length) grid.appendChild(h(`<div class="empty">검색 결과가 없어요</div>`));
+    if (!foods.length) grid.appendChild(h(`<div class="empty">목록에 없어요. 위 버튼을 누르면 Claude가 칼로리를 찾아줘요</div>`));
+    const ai = body.querySelector('.ask-ai');
+    ai.hidden = !q;
+    ai.textContent = `🤖 '${q}' 칼로리 Claude에게 물어보기`;
   }
   function drawPicked() {
     picked.innerHTML = '';
@@ -266,6 +270,14 @@ function addFoodSheet(date, slot, label) {
     okBtn.textContent = sel.size ? `${sel.size}개 추가 · ${kc(total)} kcal` : '추가하기';
   }
   body.querySelector('.q').oninput = drawGrid;
+  const askAI = () => {
+    const q = body.querySelector('.q').value.trim();
+    if (!q) return;
+    close();
+    aiMealSheet(date, slot, label, { text: q });
+  };
+  body.querySelector('.ask-ai').onclick = askAI;
+  body.querySelector('.q').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); askAI(); } };
   const close = sheet(`${label} 추가`, body);
   body.querySelector('.photo').onchange = async (e) => {
     const file = e.target.files[0];
@@ -273,7 +285,7 @@ function addFoodSheet(date, slot, label) {
     let jpeg;
     try { jpeg = imageToJpeg(await fileToImage(file)); } catch { return toast('사진을 열 수 없어요'); }
     close();
-    photoMealSheet(date, slot, label, jpeg);
+    aiMealSheet(date, slot, label, { jpeg });
   };
   okBtn.onclick = () => {
     if (!sel.size) return;
@@ -298,28 +310,30 @@ function addFoodSheet(date, slot, label) {
   drawGrid(); drawPicked();
 }
 
-async function photoMealSheet(date, slot, label, jpeg) {
+async function aiMealSheet(date, slot, label, { jpeg, text }) {
   const body = h(`<div>
-    <img class="preview-img" src="${jpeg}" alt="">
-    <div class="out"><p class="row small"><span class="spinner"></span><span>Claude가 음식과 양을 보고 칼로리를 계산하는 중… (10~30초)</span></p></div>
+    ${jpeg ? `<img class="preview-img" src="${jpeg}" alt="">` : `<p style="margin-top:0"><b>${esc(text)}</b></p>`}
+    <div class="out"><p class="row small"><span class="spinner"></span><span>${jpeg ? 'Claude가 음식과 양을 보고 칼로리를 계산하는 중… (10~30초)' : 'Claude가 칼로리를 찾는 중… (5~20초)'}</span></p></div>
   </div>`);
-  const close = sheet(`${label} · 사진으로 추가`, body);
+  const close = sheet(`${label} · ${jpeg ? '사진으로 추가' : 'Claude에게 물어보기'}`, body);
   const out = body.querySelector('.out');
-  const sample = await sampleImageReady();
+  const sample = jpeg ? await sampleImageReady() : await sampleReady();
   const apiKey = db.settings.apiKey;
   if (!sample && !apiKey) {
-    out.innerHTML = `<p class="small up">${window.claude?.use ? 'Claude 사용을 허용해야 사진을 읽을 수 있어요. 페이지를 새로고침한 뒤 허용을 눌러 주세요.' : '사진 분석은 claude.ai 링크로 열거나, 설정에 Claude API 키를 넣으면 쓸 수 있어요.'}</p>`;
+    out.innerHTML = `<p class="small up">${window.claude?.use ? 'Claude 사용을 허용해야 쓸 수 있어요. 페이지를 새로고침한 뒤 허용을 눌러 주세요.' : '이 기능은 claude.ai 링크로 열거나, 설정에 Claude API 키를 넣으면 쓸 수 있어요.'}</p>`;
     return;
   }
   let res;
   try {
-    res = await analyzeFoodPhoto({ sample, apiKey, jpeg, foods: db.foods });
+    res = jpeg
+      ? await analyzeFoodPhoto({ sample, apiKey, jpeg, foods: db.foods })
+      : await analyzeFoodText({ sample, apiKey, text, foods: db.foods });
   } catch (err) {
     console.error(err);
     const code = err?.code;
-    out.innerHTML = `<p class="small up">${code === 'not_granted' ? 'Claude 사용을 허용해야 사진을 읽을 수 있어요.'
+    out.innerHTML = `<p class="small up">${code === 'not_granted' ? 'Claude 사용을 허용해야 쓸 수 있어요.'
       : code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 올려 주세요.'
-      : code === 'invalid_json' ? '사진에서 음식을 제대로 읽지 못했어요. 다시 올려 주세요.'
+      : code === 'invalid_json' ? '음식을 제대로 알아보지 못했어요. 다시 해보거나 직접 입력해 주세요.'
       : err?.status === 401 ? 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.'
       : '분석 실패: ' + esc(err?.message || err)}</p>`;
     return;
@@ -327,7 +341,7 @@ async function photoMealSheet(date, slot, label, jpeg) {
   const rows = res.items.map((it) => ({ ...it, use: true, per: it.amount > 0 ? it.kcal / it.amount : it.kcal }));
   out.innerHTML = '';
   if (res.note) out.appendChild(h(`<p class="small muted" style="margin-top:0">${esc(res.note)}</p>`));
-  if (!rows.length) { out.appendChild(h(`<p class="small up">음식을 찾지 못했어요. 다른 사진으로 해보거나 목록에서 골라 주세요.</p>`)); return; }
+  if (!rows.length) { out.appendChild(h(`<p class="small up">음식을 찾지 못했어요. 다르게 적어 보거나 직접 입력해 주세요.</p>`)); return; }
   const list = h(`<div></div>`);
   const total = h(`<button class="btn primary block" style="margin-top:12px"></button>`);
   const saveLib = h(`<label class="small row" style="margin-top:10px"><input type="checkbox"> 새로 찾은 음식을 '자주 먹는 음식'에 저장</label>`);
@@ -354,7 +368,7 @@ async function photoMealSheet(date, slot, label, jpeg) {
     list.appendChild(c);
   });
   out.append(list, saveLib, total);
-  out.appendChild(h(`<p class="small muted">사진으로 추정한 값이라 실제와 다를 수 있어요. 양이나 kcal를 고친 뒤 추가하세요.</p>`));
+  out.appendChild(h(`<p class="small muted">Claude가 추정한 값이라 실제와 다를 수 있어요. 양이나 kcal를 고친 뒤 추가하세요.</p>`));
   sum();
   total.onclick = () => {
     const used = rows.filter((r) => r.use && r.name.trim());

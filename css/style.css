@@ -244,3 +244,4 @@ svg.chart .hit { fill: transparent; cursor: pointer; }
 @media (min-width: 600px) {
   .cal .day { min-height: 90px; font-size: 12px; padding: 6px; }
 }
+.food-grid .empty { grid-column: 1 / -1; }
