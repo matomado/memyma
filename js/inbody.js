@@ -101,7 +101,8 @@ const PROMPT = (t) => `이 이미지는 InBody(인바디) 앱 화면 캡처 또�
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';
 
-export async function analyzeWithClaude(jpegDataUrl, apiKey) {
+/** API 키로 Claude 에 이미지 1장 + 지시문을 보내고 schema 에 맞는 JSON 을 받음 */
+export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
   const { default: Anthropic } = await import(SDK_URL);
   // 개인용 앱: 키는 이 브라우저(localStorage)에만 저장되고 Anthropic API 로만 전송됩니다.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
@@ -111,21 +112,25 @@ export async function analyzeWithClaude(jpegDataUrl, apiKey) {
     max_tokens: 16000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema } },
     messages: [
       {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
-          { type: 'text', text: PROMPT(today()) },
+          { type: 'text', text: prompt },
         ],
       },
     ],
   });
-  if (res.stop_reason === 'refusal') throw new Error('분석이 거절되었습니다. 다른 캡처로 시도해 주세요.');
+  if (res.stop_reason === 'refusal') throw new Error('분석이 거절되었습니다. 다른 사진으로 시도해 주세요.');
   if (res.stop_reason === 'max_tokens') throw new Error('응답이 잘렸습니다. 다시 시도해 주세요.');
   const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const out = JSON.parse(text);
+  return JSON.parse(text);
+}
+
+export async function analyzeWithClaude(jpegDataUrl, apiKey) {
+  const out = await claudeImageJSON(jpegDataUrl, apiKey, PROMPT(today()), SCHEMA);
   return { measurements: out.measurements.map(clean), note: out.note || '' };
 }
 

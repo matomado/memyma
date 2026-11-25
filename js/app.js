@@ -6,6 +6,7 @@ import {
   initCloud, isCloud, setSaveErrorHandler,
 } from './store.js';
 import { lineChart, barChart } from './chart.js';
+import { analyzeFoodPhoto } from './food-photo.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
   fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, analyzeWithSample, dataUrlToBlob,
@@ -212,6 +213,7 @@ function addFoodSheet(date, slot, label) {
   const cnt = foodUseCount();
   const sel = new Map(); // foodId -> qty
   const body = h(`<div>
+    <label class="btn block" style="margin-bottom:10px">📷 음식 사진으로 칼로리 계산<input type="file" accept="image/*" class="photo" hidden></label>
     <input type="text" placeholder="음식 검색" class="q" style="margin-bottom:10px">
     <div class="food-grid"></div>
     <div class="hr"></div>
@@ -265,6 +267,14 @@ function addFoodSheet(date, slot, label) {
   }
   body.querySelector('.q').oninput = drawGrid;
   const close = sheet(`${label} 추가`, body);
+  body.querySelector('.photo').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    let jpeg;
+    try { jpeg = imageToJpeg(await fileToImage(file)); } catch { return toast('사진을 열 수 없어요'); }
+    close();
+    photoMealSheet(date, slot, label, jpeg);
+  };
   okBtn.onclick = () => {
     if (!sel.size) return;
     const arr = ensureDayMeals(date)[slot];
@@ -286,6 +296,78 @@ function addFoodSheet(date, slot, label) {
     save(); close(); rerender();
   };
   drawGrid(); drawPicked();
+}
+
+async function photoMealSheet(date, slot, label, jpeg) {
+  const body = h(`<div>
+    <img class="preview-img" src="${jpeg}" alt="">
+    <div class="out"><p class="row small"><span class="spinner"></span><span>Claude가 음식과 양을 보고 칼로리를 계산하는 중… (10~30초)</span></p></div>
+  </div>`);
+  const close = sheet(`${label} · 사진으로 추가`, body);
+  const out = body.querySelector('.out');
+  const sample = await sampleImageReady();
+  const apiKey = db.settings.apiKey;
+  if (!sample && !apiKey) {
+    out.innerHTML = `<p class="small up">${window.claude?.use ? 'Claude 사용을 허용해야 사진을 읽을 수 있어요. 페이지를 새로고침한 뒤 허용을 눌러 주세요.' : '사진 분석은 claude.ai 링크로 열거나, 설정에 Claude API 키를 넣으면 쓸 수 있어요.'}</p>`;
+    return;
+  }
+  let res;
+  try {
+    res = await analyzeFoodPhoto({ sample, apiKey, jpeg, foods: db.foods });
+  } catch (err) {
+    console.error(err);
+    const code = err?.code;
+    out.innerHTML = `<p class="small up">${code === 'not_granted' ? 'Claude 사용을 허용해야 사진을 읽을 수 있어요.'
+      : code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 올려 주세요.'
+      : code === 'invalid_json' ? '사진에서 음식을 제대로 읽지 못했어요. 다시 올려 주세요.'
+      : err?.status === 401 ? 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.'
+      : '분석 실패: ' + esc(err?.message || err)}</p>`;
+    return;
+  }
+  const rows = res.items.map((it) => ({ ...it, use: true, per: it.amount > 0 ? it.kcal / it.amount : it.kcal }));
+  out.innerHTML = '';
+  if (res.note) out.appendChild(h(`<p class="small muted" style="margin-top:0">${esc(res.note)}</p>`));
+  if (!rows.length) { out.appendChild(h(`<p class="small up">음식을 찾지 못했어요. 다른 사진으로 해보거나 목록에서 골라 주세요.</p>`)); return; }
+  const list = h(`<div></div>`);
+  const total = h(`<button class="btn primary block" style="margin-top:12px"></button>`);
+  const saveLib = h(`<label class="small row" style="margin-top:10px"><input type="checkbox"> 새로 찾은 음식을 '자주 먹는 음식'에 저장</label>`);
+  const sum = () => {
+    const used = rows.filter((r) => r.use);
+    total.textContent = used.length ? `${used.length}개 추가 · ${kc(used.reduce((a, r) => a + r.kcal, 0))} kcal` : '추가할 음식을 선택하세요';
+  };
+  rows.forEach((r) => {
+    const lib = r.foodId ? db.foods.find((f) => f.id === r.foodId) : null;
+    const c = h(`<div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;margin-bottom:8px">
+      <div class="row" style="margin-bottom:8px"><input type="checkbox" class="use" checked style="width:20px;height:20px;flex:none">
+        <input type="text" class="nm grow" value="${esc(r.name)}">${lib ? '<span class="tag" style="flex:none">★ 등록 음식</span>' : ''}</div>
+      <div class="grid3">
+        <label class="field" style="margin:0"><span>양</span><input type="number" inputmode="decimal" step="any" class="am" value="${r.amount}"></label>
+        <label class="field" style="margin:0"><span>단위</span><input type="text" class="un" value="${esc(r.unit)}"></label>
+        <label class="field" style="margin:0"><span>kcal</span><input type="number" inputmode="numeric" class="kc" value="${r.kcal}"></label>
+      </div></div>`);
+    const kcIn = c.querySelector('.kc');
+    c.querySelector('.use').onchange = (e) => { r.use = e.target.checked; sum(); };
+    c.querySelector('.nm').oninput = (e) => (r.name = e.target.value);
+    c.querySelector('.un').oninput = (e) => (r.unit = e.target.value);
+    c.querySelector('.am').oninput = (e) => { const v = parseFloat(e.target.value); if (v > 0) { r.amount = v; r.kcal = Math.round(r.per * v); kcIn.value = r.kcal; sum(); } };
+    kcIn.oninput = () => { r.kcal = Math.max(0, Math.round(+kcIn.value || 0)); r.per = r.amount > 0 ? r.kcal / r.amount : r.kcal; sum(); };
+    list.appendChild(c);
+  });
+  out.append(list, saveLib, total);
+  out.appendChild(h(`<p class="small muted">사진으로 추정한 값이라 실제와 다를 수 있어요. 양이나 kcal를 고친 뒤 추가하세요.</p>`));
+  sum();
+  total.onclick = () => {
+    const used = rows.filter((r) => r.use && r.name.trim());
+    if (!used.length) return;
+    const store = saveLib.querySelector('input').checked;
+    const arr = ensureDayMeals(date)[slot];
+    for (const r of used) {
+      let foodId = r.foodId || uid();
+      if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false });
+      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1 });
+    }
+    save(); close(); rerender(); toast(`${label}에 ${used.length}개 추가했어요`);
+  };
 }
 
 function editMealItem(date, slot, idx) {
