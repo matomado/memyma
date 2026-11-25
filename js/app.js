@@ -7,6 +7,7 @@ import {
 } from './store.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
+import { analyzeWatch } from './watch.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
   fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, sampleReady, analyzeWithSample, dataUrlToBlob,
@@ -175,7 +176,7 @@ function renderMeals() {
     const ul = card.querySelector('ul');
     if (!items.length) ul.appendChild(h(`<li class="muted small" style="border:0;padding:4px 0">기록 없음</li>`));
     items.forEach((it, i) => {
-      const li = h(`<li><div class="name"><b>${esc(it.name)}</b><span class="sub">${nf(it.amount * it.qty, 2)}${esc(it.unit)}</span></div><span class="kcal">${kc(itemKcal(it))}</span><button class="x" aria-label="삭제">×</button></li>`);
+      const li = h(`<li><div class="name"><b>${esc(it.name)}</b><span class="sub">${nf(it.amount * it.qty, 2)}${esc(it.unit)}${it.eaten < 1 ? ` · <span class="up">${eatenText(it.eaten)}</span>` : ''}</span></div><span class="kcal">${kc(itemKcal(it))}</span><button class="x" aria-label="삭제">×</button></li>`);
       li.querySelector('.name').onclick = () => editMealItem(d, k, i);
       li.querySelector('.x').onclick = () => { ensureDayMeals(d)[k].splice(i, 1); save(); rerender(); };
       ul.appendChild(li);
@@ -201,6 +202,16 @@ function renderMeals() {
     <button class="btn block">음식 목록 관리</button></div>`);
   lib.querySelector('button').onclick = foodLibrarySheet;
   $view.appendChild(lib);
+}
+
+const EATEN = [[1, '다 먹음'], [0.75, '¾'], [0.5, '절반'], [0.25, '¼']];
+const eatenText = (e) => (e == null || e >= 1 ? '' : (EATEN.find(([v]) => v === e)?.[1] || `${Math.round(e * 100)}%`) + ' 먹음');
+function eatenSeg(cur, onPick) {
+  const seg = h(`<div class="seg">${EATEN.map(([v, l]) => `<button type="button" data-v="${v}">${l}</button>`).join('')}</div>`);
+  const mark = (x) => seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.v === x));
+  seg.querySelectorAll('button').forEach((b) => (b.onclick = () => { mark(+b.dataset.v); onPick(+b.dataset.v); }));
+  mark(cur);
+  return seg;
 }
 
 function foodUseCount() {
@@ -339,6 +350,7 @@ async function aiMealSheet(date, slot, label, { jpeg, text }) {
     return;
   }
   const rows = res.items.map((it) => ({ ...it, use: true, per: it.amount > 0 ? it.kcal / it.amount : it.kcal }));
+  let eaten = 1;
   out.innerHTML = '';
   if (res.note) out.appendChild(h(`<p class="small muted" style="margin-top:0">${esc(res.note)}</p>`));
   if (!rows.length) { out.appendChild(h(`<p class="small up">음식을 찾지 못했어요. 다르게 적어 보거나 직접 입력해 주세요.</p>`)); return; }
@@ -347,7 +359,7 @@ async function aiMealSheet(date, slot, label, { jpeg, text }) {
   const saveLib = h(`<label class="small row" style="margin-top:10px"><input type="checkbox"> 새로 찾은 음식을 '자주 먹는 음식'에 저장</label>`);
   const sum = () => {
     const used = rows.filter((r) => r.use);
-    total.textContent = used.length ? `${used.length}개 추가 · ${kc(used.reduce((a, r) => a + r.kcal, 0))} kcal` : '추가할 음식을 선택하세요';
+    total.textContent = used.length ? `${used.length}개 추가 · ${kc(used.reduce((a, r) => a + r.kcal, 0) * eaten)} kcal` : '추가할 음식을 선택하세요';
   };
   rows.forEach((r) => {
     const lib = r.foodId ? db.foods.find((f) => f.id === r.foodId) : null;
@@ -367,7 +379,10 @@ async function aiMealSheet(date, slot, label, { jpeg, text }) {
     kcIn.oninput = () => { r.kcal = Math.max(0, Math.round(+kcIn.value || 0)); r.per = r.amount > 0 ? r.kcal / r.amount : r.kcal; sum(); };
     list.appendChild(c);
   });
-  out.append(list, saveLib, total);
+  const eat = h(`<div class="field" style="margin-top:6px"><span>얼마나 먹었나요? (남겼다면 골라 주세요)</span></div>`);
+  eat.appendChild(eatenSeg(1, (v) => { eaten = v; sum(); }));
+  eat.appendChild(h(`<div class="small muted" style="margin-top:4px">음식마다 다르게 남겼다면, 추가한 뒤 그 음식을 눌러서 바꿀 수 있어요.</div>`));
+  out.append(list, eat, saveLib, total);
   out.appendChild(h(`<p class="small muted">Claude가 추정한 값이라 실제와 다를 수 있어요. 양이나 kcal를 고친 뒤 추가하세요.</p>`));
   sum();
   total.onclick = () => {
@@ -378,7 +393,7 @@ async function aiMealSheet(date, slot, label, { jpeg, text }) {
     for (const r of used) {
       let foodId = r.foodId || uid();
       if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false });
-      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1 });
+      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1, ...(eaten < 1 ? { eaten } : {}) });
     }
     save(); close(); rerender(); toast(`${label}에 ${used.length}개 추가했어요`);
   };
@@ -389,12 +404,20 @@ function editMealItem(date, slot, idx) {
   const body = h(`<div>
     <p><b>${esc(it.name)}</b> <span class="muted small">(${nf(it.amount, 2)}${esc(it.unit)}당 ${kc(it.kcal)}kcal)</span></p>
     <label class="field"><span>수량 (배수)</span><input type="number" inputmode="decimal" step="0.5" value="${it.qty}"></label>
+    <div class="field"><span>먹은 양 (남겼다면 골라 주세요)</span><div class="eat"></div></div>
+    <p class="small muted kcal-now" style="margin-top:-4px"></p>
     <label class="field"><span>이동</span><select>${MEAL_SLOTS.map(([k, l]) => `<option value="${k}" ${k === slot ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <button class="btn primary block">저장</button></div>`);
+  let eaten = it.eaten ?? 1;
+  const qIn = body.querySelector('input');
+  const now = () => { const q = parseFloat(qIn.value) || it.qty; body.querySelector('.kcal-now').textContent = `→ ${kc(it.kcal * q * eaten)} kcal로 기록돼요`; };
+  body.querySelector('.eat').appendChild(eatenSeg(eaten, (v) => { eaten = v; now(); }));
+  qIn.oninput = now; now();
   const close = sheet('음식 수정', body);
-  body.querySelector('button').onclick = () => {
-    const q = parseFloat(body.querySelector('input').value);
+  body.querySelector('.btn.primary').onclick = () => {
+    const q = parseFloat(qIn.value);
     if (q > 0) it.qty = q;
+    if (eaten >= 1) delete it.eaten; else it.eaten = eaten;
     const to = body.querySelector('select').value;
     if (to !== slot) { const m = ensureDayMeals(date); m[slot].splice(idx, 1); m[to].push(it); }
     save(); close(); rerender();
@@ -474,6 +497,7 @@ function workoutDetail(w) {
     }
   }
   if (w.type === 'etc' && w.title) p.push(w.title);
+  if (w.avgHr) p.push(`♥${w.avgHr}`);
   return p.join(' · ');
 }
 
@@ -495,7 +519,17 @@ function renderWorkout() {
   const ws = workoutsOf(ui.date);
   const card = h(`<div class="card"><h2>운동 기록 <small>${ws.length ? `${kc(burnedOf(ui.date))} kcal 소모` : ''}</small></h2></div>`);
   card.appendChild(ws.length ? workoutList(ws) : h(`<div class="empty">이 날 운동 기록이 없어요</div>`));
-  const btns = h(`<div class="grid3" style="margin-top:12px"></div>`);
+  const watch = h(`<label class="btn block" style="margin-top:12px">⌚ 애플워치 캡처로 추가<input type="file" accept="image/*" hidden></label>`);
+  watch.querySelector('input').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    let jpeg;
+    try { jpeg = imageToJpeg(await fileToImage(file)); } catch { return toast('사진을 열 수 없어요'); }
+    watchSheet(jpeg);
+  };
+  card.appendChild(watch);
+  const btns = h(`<div class="grid3" style="margin-top:8px"></div>`);
   ['swim', 'weight', 'cardio'].forEach((t) => {
     const b = h(`<button class="btn">${TYPE[t].icon} ${TYPE[t].label}</button>`);
     b.onclick = () => workoutForm(null, t);
@@ -524,8 +558,80 @@ function renderWorkout() {
   </div>`));
 }
 
-function workoutForm(existing, type) {
-  const w = existing ? structuredClone(existing) : { id: uid(), date: ui.date, type, duration: type === 'swim' ? 50 : type === 'weight' ? 60 : 30, intensity: 'mid', strokes: [], parts: [], sets: [], kind: '러닝', distance: '', memo: '', title: '', kcal: 0, kcalManual: false };
+async function watchSheet(jpeg) {
+  const body = h(`<div><img class="preview-img" src="${jpeg}" alt="">
+    <div class="out"><p class="row small"><span class="spinner"></span><span>Claude가 애플워치 기록을 읽는 중… (10~30초)</span></p></div></div>`);
+  const close = sheet('⌚ 애플워치 캡처', body);
+  const out = body.querySelector('.out');
+  const sample = await sampleImageReady();
+  const apiKey = db.settings.apiKey;
+  if (!sample && !apiKey) {
+    out.innerHTML = `<p class="small up">${window.claude?.use ? 'Claude 사용을 허용해야 캡처를 읽을 수 있어요. 페이지를 새로고침한 뒤 허용을 눌러 주세요.' : '캡처 읽기는 claude.ai 링크로 열거나, 설정에 Claude API 키를 넣으면 쓸 수 있어요.'}</p>`;
+    return;
+  }
+  let res;
+  try {
+    res = await analyzeWatch({ sample, apiKey, jpeg });
+  } catch (err) {
+    console.error(err);
+    const code = err?.code;
+    out.innerHTML = `<p class="small up">${code === 'not_granted' ? 'Claude 사용을 허용해야 캡처를 읽을 수 있어요.'
+      : code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 올려 주세요.'
+      : code === 'invalid_json' ? '캡처를 제대로 읽지 못했어요. 다시 올리거나 직접 입력해 주세요.'
+      : err?.status === 401 ? 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.'
+      : '분석 실패: ' + esc(err?.message || err)}</p>`;
+    return;
+  }
+  const toPreset = (x) => {
+    const p = { date: x.date || ui.date, strokes: x.strokes, distance: x.distance, avgHr: x.avgHr, source: 'watch' };
+    if (x.duration != null) p.duration = x.duration;
+    if (x.kcal != null) { p.kcal = x.kcal; p.kcalManual = true; }
+    if (x.type === 'cardio') p.kind = x.kind;
+    if (x.type === 'etc') p.title = x.title;
+    if (x.title) p.memo = `애플워치: ${x.title}`;
+    return p;
+  };
+  if (!res.workouts.length) {
+    out.innerHTML = `<p class="small up">운동 기록을 찾지 못했어요. ${esc(res.note)}</p>`;
+    return;
+  }
+  if (res.workouts.length === 1) {
+    // 하나면 바로 입력 화면으로 (확인 후 저장)
+    const x = res.workouts[0];
+    close();
+    workoutForm(null, x.type, toPreset(x));
+    return;
+  }
+  // 여러 개면 골라서 한 번에 추가
+  const picks = res.workouts.map(() => true);
+  out.innerHTML = '';
+  if (res.note) out.appendChild(h(`<p class="small muted" style="margin-top:0">${esc(res.note)}</p>`));
+  const ul = h(`<ul class="list"></ul>`);
+  res.workouts.forEach((x, i) => {
+    const w = { type: x.type, ...toPreset(x) };
+    const li = h(`<li><input type="checkbox" checked style="width:20px;height:20px;flex:none"><span class="tag ${x.type}">${TYPE[x.type].icon} ${TYPE[x.type].label}</span>
+      <div class="name"><b>${esc(workoutDetail(w)) || esc(x.title) || '-'}</b><span class="sub">${esc(x.title)} · ${fmtShort(w.date)}</span></div><span class="kcal">${x.kcal != null ? kc(x.kcal) : '-'}</span></li>`);
+    li.querySelector('input').onchange = (e) => (picks[i] = e.target.checked);
+    ul.appendChild(li);
+  });
+  const add = h(`<button class="btn primary block" style="margin-top:12px">선택한 운동 추가</button>`);
+  add.onclick = () => {
+    let n = 0;
+    res.workouts.forEach((x, i) => {
+      if (!picks[i]) return;
+      const base = { id: uid(), type: x.type, duration: 0, intensity: 'mid', strokes: [], parts: [], sets: [], kind: '러닝', distance: '', memo: '', title: '', kcal: 0, kcalManual: false, avgHr: null };
+      const w = { ...base, ...toPreset(x) };
+      if (!w.kcalManual) w.kcal = estimateKcal(w);
+      db.workouts.push(w);
+      n++;
+    });
+    save(); close(); rerender(); toast(`운동 ${n}개를 추가했어요`);
+  };
+  out.append(ul, add, h(`<p class="small muted">추가한 뒤 누르면 수정할 수 있어요.</p>`));
+}
+
+function workoutForm(existing, type, preset = {}) {
+  const w = existing ? structuredClone(existing) : { id: uid(), date: ui.date, type, duration: type === 'swim' ? 50 : type === 'weight' ? 60 : 30, intensity: 'mid', strokes: [], parts: [], sets: [], kind: '러닝', distance: '', memo: '', title: '', kcal: 0, kcalManual: false, avgHr: null, ...preset };
   if (w.type === 'weight' && !w.sets.length) w.sets.push({ name: '', kg: '', reps: '', sets: '' });
   const body = h(`<div>
     <label class="field"><span>날짜</span><input type="date" class="dt" value="${w.date}"></label>
@@ -533,6 +639,7 @@ function workoutForm(existing, type) {
     <div class="grid2">
       <label class="field"><span>운동 시간 (분)</span><input type="number" inputmode="numeric" class="du" value="${w.duration || ''}"></label>
       <label class="field"><span>소모 kcal <em class="small muted auto"></em></span><input type="number" inputmode="numeric" class="kc" value="${w.kcal || ''}"></label>
+      <label class="field"><span>평균 심박수 (bpm, 선택)</span><input type="number" inputmode="numeric" class="hrate" value="${w.avgHr || ''}"></label>
     </div>
     <div class="field"><span>강도</span><div class="seg it">${INTENSITY.map(([k, l]) => `<button type="button" data-k="${k}" class="${w.intensity === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <label class="field"><span>메모</span><textarea class="me" placeholder="컨디션, 느낀 점 등">${esc(w.memo)}</textarea></label>
@@ -543,7 +650,7 @@ function workoutForm(existing, type) {
   const autoLbl = body.querySelector('.auto');
   const recalc = () => {
     const est = estimateKcal(w);
-    autoLbl.textContent = w.kcalManual ? '(직접 입력)' : `(자동 · ${latestWeight() || 60}kg 기준)`;
+    autoLbl.textContent = w.kcalManual ? (w.source === 'watch' ? '(애플워치 활동 kcal)' : '(직접 입력)') : `(자동 · ${latestWeight() || 60}kg 기준)`;
     if (!w.kcalManual) { w.kcal = est; kcIn.value = est || ''; }
   };
   const pills = (arr, cur, multi, onPick) => {
@@ -600,6 +707,7 @@ function workoutForm(existing, type) {
   body.querySelector('[data-a=s]').onclick = () => {
     w.date = body.querySelector('.dt').value || ui.date;
     w.memo = body.querySelector('.me').value.trim();
+    w.avgHr = +body.querySelector('.hrate').value || null;
     w.duration = +w.duration || 0;
     if (w.type === 'weight') w.sets = w.sets.filter((s) => s.name.trim());
     const i = db.workouts.findIndex((x) => x.id === w.id);
@@ -841,7 +949,7 @@ function dayDetail(d) {
   for (const [k, l] of MEAL_SLOTS) {
     const items = meals[k] || [];
     if (!items.length) continue;
-    body.appendChild(h(`<p class="small" style="margin:4px 0"><b>${l}</b> ${items.map((it) => `${esc(it.name)} ${nf(it.amount * it.qty, 2)}${esc(it.unit)}`).join(', ')} <span class="muted">· ${kc(items.reduce((a, it) => a + itemKcal(it), 0))}kcal</span></p>`));
+    body.appendChild(h(`<p class="small" style="margin:4px 0"><b>${l}</b> ${items.map((it) => `${esc(it.name)} ${nf(it.amount * it.qty, 2)}${esc(it.unit)}${it.eaten < 1 ? '(' + eatenText(it.eaten) + ')' : ''}`).join(', ')} <span class="muted">· ${kc(items.reduce((a, it) => a + itemKcal(it), 0))}kcal</span></p>`));
   }
   body.appendChild(h(`<div class="hr"></div>`));
   body.appendChild(h(`<h3>운동</h3>`));

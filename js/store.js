@@ -205,7 +205,7 @@ export function ensureDayMeals(date) {
   if (!state.meals[date]) state.meals[date] = { breakfast: [], lunch: [], dinner: [], snack: [] };
   return state.meals[date];
 }
-export const itemKcal = (it) => Math.round(it.kcal * it.qty);
+export const itemKcal = (it) => Math.round(it.kcal * it.qty * (it.eaten ?? 1)); // eaten: 먹은 비율(남긴 경우)
 export function intakeOf(date) {
   const m = state.meals[date];
   if (!m) return 0;
