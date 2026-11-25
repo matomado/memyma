@@ -129,6 +129,16 @@ export async function analyzeWithClaude(jpegDataUrl, apiKey) {
   return { measurements: out.measurements.map(clean), note: out.note || '' };
 }
 
+/** data: URL -> Blob (claude.ai 안에서는 fetch(data:) 가 막혀 있어서 직접 변환) */
+export function dataUrlToBlob(dataUrl) {
+  const [head, b64] = dataUrl.split(',');
+  const type = head.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
 /* ---------- claude.ai 에서 열었을 때: 키 없이 Claude 사용 ---------- */
 export async function sampleImageReady() {
   try {
@@ -140,7 +150,7 @@ export async function sampleImageReady() {
 }
 
 export async function analyzeWithSample(sample, jpegDataUrl) {
-  const blob = await (await fetch(jpegDataUrl)).blob();
+  const blob = dataUrlToBlob(jpegDataUrl);
   const keys = METRICS.map((m) => m.key).join(', ');
   const prompt = PROMPT(today()) + `
 

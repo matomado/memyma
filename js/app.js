@@ -8,7 +8,7 @@ import {
 import { lineChart, barChart } from './chart.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
-  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, analyzeWithSample,
+  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, analyzeWithSample, dataUrlToBlob,
 } from './inbody.js';
 
 /* ================= 공통 유틸 ================= */
@@ -534,6 +534,10 @@ function renderInbody() {
     } catch { return toast('이미지를 열 수 없어요'); }
     const sample = await sampleImageReady();
     const key = db.settings.apiKey;
+    if (!sample && window.claude?.use) {
+      status.appendChild(h(`<p class="small up">Claude가 캡처를 읽으려면 사용 허용이 필요해요. 페이지를 새로고침한 뒤 허용을 눌러 주세요. 지금은 '직접 입력'으로도 기록할 수 있어요.</p>`));
+      return;
+    }
     const smart = !!(sample || key);
     status.appendChild(h(`<img class="preview-img" src="${jpeg}" alt="">`));
     const msg = h(`<p class="row small"><span class="spinner"></span><span class="t">${smart ? 'Claude가 캡처를 읽는 중… (10~30초)' : '문자 인식(OCR) 중… 처음엔 엔진을 받느라 조금 걸려요'}</span></p>`);
@@ -779,7 +783,7 @@ function renderSettings() {
       const assets = await window.claude?.use?.('assets').catch(() => null);
       if (assets) {
         // claude.ai: 계정에 올려서 다른 기기에서도 보이게
-        const blob = await (await fetch(url)).blob();
+        const blob = dataUrlToBlob(url);
         const up = await assets.upload(blob);
         s.bgUrl = up.url;
       } else {
