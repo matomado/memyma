@@ -33,7 +33,7 @@ export const setText = (s) => {
 function history(name, date, excludeId) {
   const out = [];
   for (const w of db.workouts) {
-    if (w.type !== 'weight' || w.id === excludeId || w.date > date) continue;
+    if (!['weight', 'pt'].includes(w.type) || w.id === excludeId || w.date > date) continue;
     for (const s of w.sets || []) if (norm(s.name) === norm(name) && repsList(s).length) out.push({ date: w.date, kg: +s.kg || 0, reps: repsList(s) });
   }
   return out.sort((a, b) => b.date.localeCompare(a.date));

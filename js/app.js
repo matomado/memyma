@@ -90,6 +90,7 @@ const TYPE = {
   weight: { label: '웨이트', icon: '🏋️' },
   cardio: { label: '유산소', icon: '🏃' },
   etc: { label: '기타', icon: '✨' },
+  pt: { label: 'PT', icon: '🧑‍🏫' },
 };
 
 /* ================= 배경 ================= */
@@ -548,7 +549,7 @@ const INTENSITY = [['low', '가볍게', 0.8], ['mid', '보통', 1], ['high', '�
 
 function metOf(w) {
   const f = (INTENSITY.find((x) => x[0] === w.intensity) || INTENSITY[1])[2];
-  const base = w.type === 'swim' ? 8 : w.type === 'weight' ? 5 : w.type === 'cardio' ? CARDIO[w.kind] || 5 : 5;
+  const base = w.type === 'swim' ? 8 : w.type === 'weight' || w.type === 'pt' ? 5 : w.type === 'cardio' ? CARDIO[w.kind] || 5 : 5;
   return base * f;
 }
 const estimateKcal = (w) => Math.round(metOf(w) * (latestWeight() || 60) * ((+w.duration || 0) / 60));
@@ -558,7 +559,8 @@ function workoutDetail(w) {
   if (w.duration) p.push(`${w.duration}분`);
   if (w.type === 'swim') { if (w.strokes?.length) p.push(w.strokes.join('·')); if (w.distance) p.push(`${w.distance}m`); }
   if (w.type === 'cardio') { if (w.kind) p.push(w.kind); if (w.distance) p.push(`${w.distance}km`); }
-  if (w.type === 'weight') {
+  if (w.type === 'pt' && w.ptNo) p.push(`${w.ptNo}회차`);
+  if (w.type === 'weight' || w.type === 'pt') {
     if (w.parts?.length) p.push(w.parts.join('·'));
     const sets = (w.sets || []).filter((s) => s.name);
     if (sets.length) {
@@ -575,7 +577,7 @@ function workoutDetail(w) {
 function workoutList(ws, editable = true) {
   const ul = h(`<ul class="list"></ul>`);
   ws.forEach((w) => {
-    const sets = w.type === 'weight' ? (w.sets || []).filter((s) => s.name).map((s) => `${esc(s.name)} ${esc(setText(s))}`).join('<br>') : '';
+    const sets = w.type === 'weight' || w.type === 'pt' ? (w.sets || []).filter((s) => s.name).map((s) => `${esc(s.name)} ${esc(setText(s))}`).join('<br>') : '';
     const li = h(`<li style="align-items:flex-start"><span class="tag ${w.type}">${TYPE[w.type].icon} ${TYPE[w.type].label}</span>
       <div class="name"><b>${esc(workoutDetail(w)) || '-'}</b>${sets ? `<span class="sub">${sets}</span>` : ''}${w.memo ? `<span class="sub">📝 ${esc(w.memo)}</span>` : ''}</div>
       <span class="kcal">${kc(w.kcal || 0)}<span class="small muted"> kcal</span></span></li>`);
@@ -605,9 +607,13 @@ function renderWorkout() {
     btns.appendChild(b);
   });
   card.appendChild(btns);
-  const etc = h(`<button class="btn ghost block" style="margin-top:8px">✨ 기타 운동</button>`);
-  etc.onclick = () => workoutForm(null, 'etc');
+  const etc = h(`<div class="grid2" style="margin-top:8px"><button class="btn">🧑‍🏫 PT 수업</button><button class="btn ghost">✨ 기타 운동</button></div>`);
+  const [ptB, etcB] = etc.querySelectorAll('button');
+  ptB.onclick = () => workoutForm(null, 'pt');
+  etcB.onclick = () => workoutForm(null, 'etc');
   card.appendChild(etc);
+  const pst = ptStatus();
+  if (pst) card.appendChild(h(`<div class="today-plan" style="margin:10px 0 0"><span>🧑‍🏫 ${pst.html}</span></div>`));
   $view.appendChild(card);
 
   $view.appendChild(planCard());
@@ -697,8 +703,48 @@ function renderWorkoutAnalysis() {
 }
 
 const curPlan = () => (db.plan && db.plan.week === weekStart(today()) ? db.plan : null);
-const PLAN_ICON = { weight: '🏋️', swim: '🏊', cardio: '🏃', etc: '✨', rest: '😴' };
+const PLAN_ICON = { weight: '🏋️', pt: '🧑‍🏫', swim: '🏊', cardio: '🏃', etc: '✨', rest: '😴' };
+
+/* ---------- PT ---------- */
+const DOW_KR = ['일', '월', '화', '수', '목', '금', '토'];
+const ptCount = (excludeId) => db.workouts.filter((w) => w.type === 'pt' && w.id !== excludeId).length;
+const nextPtNo = () => (+db.settings.pt?.done0 || 0) + ptCount() + 1;
+function ptStatus() {
+  const pt = db.settings.pt || {};
+  if (!pt.total && !(pt.days || []).length) return null;
+  const used = (+pt.done0 || 0) + ptCount();
+  const remain = pt.total ? pt.total - used : null;
+  let next = '';
+  for (let i = 0; i < 14 && (pt.days || []).length; i++) {
+    const d = addDays(today(), i);
+    if (pt.days.includes(DOW_KR[parseISO(d).getDay()]) && !workoutsOf(d).some((w) => w.type === 'pt')) { next = `${fmtShort(d)}(${DOW_KR[parseISO(d).getDay()]})${pt.time ? ' ' + pt.time : ''}`; break; }
+  }
+  const remainText = pt.total ? `${used}/${pt.total}회 · <b>${Math.max(0, remain)}회 남음</b>` : `${used}회 받음`;
+  return { remainText, html: `PT ${remainText}${next ? ` · 다음 PT <b>${next}</b>` : ''}${remain != null && remain <= 3 ? ' <span class="up">· 곧 끝나요</span>' : ''}` };
+}
 const planDone = (d) => d.type !== 'rest' && workoutsOf(d.date).some((w) => w.type === d.type || (d.type === 'etc'));
+
+function ptCard() {
+  const pt = (db.settings.pt ||= { total: null, done0: 0, days: [], time: '' });
+  pt.days ||= [];
+  const card = h(`<div class="card"><h2>PT 수업</h2>
+    <p class="small muted" style="margin-top:0">등록하면 남은 횟수와 다음 PT를 보여주고, 루틴 추천에서 PT 요일은 PT로 고정해요.</p>
+    <div class="grid2">
+      <label class="field"><span>등록한 총 횟수</span><input type="number" inputmode="numeric" class="tot" placeholder="예: 20" value="${pt.total ?? ''}"></label>
+      <label class="field"><span>앱 쓰기 전 받은 횟수</span><input type="number" inputmode="numeric" class="d0" value="${pt.done0 || ''}" placeholder="0"></label>
+    </div>
+    <div class="field"><span>정기 요일</span><div class="pills" style="flex-wrap:wrap">${['월', '화', '수', '목', '금', '토', '일'].map((d) => `<button type="button" class="pill ${pt.days.includes(d) ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div></div>
+    <label class="field"><span>시간 (선택)</span><input type="time" class="tm" value="${esc(pt.time || '')}"></label>
+    <p class="small st" style="margin:0"></p></div>`);
+  const st = card.querySelector('.st');
+  const show = () => { const s = ptStatus(); st.innerHTML = s ? '🧑‍🏫 ' + s.html : ''; };
+  card.querySelector('.tot').onchange = (e) => { pt.total = +e.target.value || null; save(); show(); };
+  card.querySelector('.d0').onchange = (e) => { pt.done0 = +e.target.value || 0; save(); show(); };
+  card.querySelector('.tm').onchange = (e) => { pt.time = e.target.value; save(); show(); };
+  card.querySelectorAll('[data-d]').forEach((b) => (b.onclick = () => { const i = pt.days.indexOf(b.dataset.d); i >= 0 ? pt.days.splice(i, 1) : pt.days.push(b.dataset.d); b.classList.toggle('on'); save(); show(); }));
+  show();
+  return card;
+}
 
 /** 내 무분할 루틴 고치기 */
 function routineCard() {
@@ -947,8 +993,8 @@ async function watchSheet(jpegs) {
 }
 
 function workoutForm(existing, type, preset = {}) {
-  const w = existing ? structuredClone(existing) : { id: uid(), date: ui.date, type, duration: type === 'swim' ? 50 : type === 'weight' ? 60 : 30, intensity: 'mid', strokes: [], parts: [], sets: [], kind: '러닝', distance: '', memo: '', title: '', kcal: 0, kcalManual: false, avgHr: null, ...preset };
-  if (w.type === 'weight' && !w.sets.length) w.sets.push({ name: '', kg: '', reps: '', sets: '' });
+  const w = existing ? structuredClone(existing) : { id: uid(), date: ui.date, type, duration: type === 'swim' ? 50 : type === 'weight' ? 60 : type === 'pt' ? 50 : 30, ptNo: type === 'pt' ? nextPtNo() : null, intensity: 'mid', strokes: [], parts: [], sets: [], kind: '러닝', distance: '', memo: '', title: '', kcal: 0, kcalManual: false, avgHr: null, ...preset };
+  if ((w.type === 'weight' || w.type === 'pt') && !w.sets.length) w.sets.push({ name: '', kg: '', reps: '', sets: '' });
   const body = h(`<div>
     <label class="field"><span>날짜</span><input type="date" class="dt" value="${w.date}"></label>
     <div class="typed"></div>
@@ -959,7 +1005,7 @@ function workoutForm(existing, type, preset = {}) {
     </div>
     <p class="help auto"></p>
     <div class="field"><span>강도</span><div class="seg it">${INTENSITY.map(([k, l]) => `<button type="button" data-k="${k}" class="${w.intensity === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
-    <label class="field"><span>메모</span><textarea class="me" placeholder="컨디션, 느낀 점 등">${esc(w.memo)}</textarea></label>
+    <label class="field"><span>${w.type === 'pt' ? '트레이너 피드백 · 메모' : '메모'}</span><textarea class="me" placeholder="${w.type === 'pt' ? '트레이너 피드백, 배운 자세 포인트, 숙제' : '컨디션, 느낀 점 등'}">${esc(w.memo)}</textarea></label>
     <div class="row"><button class="btn primary grow" data-a="s">저장</button>${existing ? '<button class="btn danger" data-a="d">삭제</button>' : ''}</div>
   </div>`);
   const typed = body.querySelector('.typed');
@@ -994,7 +1040,13 @@ function workoutForm(existing, type, preset = {}) {
       const f = h(`<label class="field"><span>거리 (km, 선택)</span><input type="number" inputmode="decimal" step="0.1" value="${w.distance || ''}"></label>`);
       f.querySelector('input').oninput = (e) => (w.distance = e.target.value);
       typed.appendChild(f);
-    } else if (w.type === 'weight') {
+    } else if (w.type === 'weight' || w.type === 'pt') {
+      if (w.type === 'pt') {
+        const st = ptStatus();
+        const f = h(`<div class="grid2"><label class="field"><span>회차</span><input type="number" inputmode="numeric" value="${w.ptNo ?? ''}"></label><div class="field"><span>남은 횟수</span><div class="small" style="line-height:44px">${st?.remainText || '설정에서 등록 횟수를 넣어 주세요'}</div></div></div>`);
+        f.querySelector('input').oninput = (e) => (w.ptNo = +e.target.value || null);
+        typed.appendChild(f);
+      }
       typed.appendChild(h(`<div class="field"><span>부위</span></div>`)).appendChild(pills(PARTS, w.parts, true, (x) => toggle(w.parts, x)));
       const box = h(`<div class="field"><span>종목</span>
         <button type="button" class="btn sm block tpl" style="margin:6px 0">📋 내 무분할 루틴 불러오기</button>
@@ -1050,8 +1102,8 @@ function workoutForm(existing, type, preset = {}) {
     w.avgHr = +body.querySelector('.hrate').value || null;
     w.duration = +w.duration || 0;
     // 회수를 적은 종목만 저장 (루틴에서 불러왔지만 안 한 종목은 빼기)
-    if (w.type === 'weight') w.sets = w.sets.filter((s) => s.name.trim() && String(s.reps ?? '').trim());
-    const ups = w.type === 'weight' ? levelUps(w.sets) : [];
+    if (w.type === 'weight' || w.type === 'pt') w.sets = w.sets.filter((s) => s.name.trim() && String(s.reps ?? '').trim());
+    const ups = w.type === 'weight' || w.type === 'pt' ? levelUps(w.sets) : [];
     const i = db.workouts.findIndex((x) => x.id === w.id);
     if (i >= 0) db.workouts[i] = w; else db.workouts.push(w);
     save(); close(); rerender();
@@ -1359,6 +1411,7 @@ function renderSettings() {
   gym.appendChild(equipSection(rerender));
   $view.appendChild(gym);
   $view.appendChild(routineCard());
+  $view.appendChild(ptCard());
 
   const goal = h(`<div class="card"><h2>내 정보 · 목표</h2>
     <div class="grid2">

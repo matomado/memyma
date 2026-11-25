@@ -1,6 +1,7 @@
 // 이번 주 운동 루틴 추천 (Claude, 없으면 기본 템플릿)
 import { db, today, addDays, weekStart, GOAL } from './store.js';
 const equip = () => db.settings.equipment || [];
+const ptDays = () => db.settings.pt?.days || [];
 import { claudeImageJSON } from './inbody.js';
 import { recordSummary } from './workout-analysis.js';
 import { ROUTINE, lastKg } from './routine.js';
@@ -25,7 +26,7 @@ const SCHEMA = {
         required: ['dow', 'type', 'title', 'duration', 'kind', 'distance', 'items'],
         properties: {
           dow: { type: 'string', enum: DOWS },
-          type: { type: 'string', enum: ['weight', 'swim', 'cardio', 'etc', 'rest'] },
+          type: { type: 'string', enum: ['weight', 'pt', 'swim', 'cardio', 'etc', 'rest'] },
           title: { type: 'string' }, duration: nnum, kind: nstr, distance: nnum,
           items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'detail'], properties: { name: { type: 'string' }, detail: { type: 'string' } } } },
         },
@@ -51,7 +52,7 @@ function prompt(prefs) {
 • 넣을 운동: ${prefs.acts.map((a) => ({ swim: '수영', weight: '웨이트', cardio: '유산소' }[a])).join(', ')}
 • 목적: ${(GOAL[s.goal] || GOAL.diet)[0]} / 성별 ${s.sex === 'male' ? '남성' : '여성'}
 • 요청사항: ${prefs.note || '없음'}
-• 헬스장에 있는 기구: ${(s.equipment || []).length ? s.equipment.join(', ') : '등록 안 함(일반적인 헬스장 기준)'}
+${ptDays().length ? `• PT 수업: 매주 ${ptDays().join(', ')}${s.pt?.time ? ' ' + s.pt.time : ''} (이 요일은 type "pt", title "PT 수업" 으로 고정. 트레이너와 근력 운동을 하므로 그날 다른 웨이트는 넣지 말고, PT 다음날은 같은 부위 웨이트를 피하기. 개인 웨이트는 PT와 합쳐 주 2~3회 정도로.)\n` : ''}• 헬스장에 있는 기구: ${(s.equipment || []).length ? s.equipment.join(', ') : '등록 안 함(일반적인 헬스장 기준)'}
 
 [따를 원칙]
 • 웨이트는 무분할: 등·가슴·하체·어깨·이두·삼두를 하루에 한 종목씩 모두, 각 5세트(시간이 부족하면 3~4세트). 근육 회복을 위해 웨이트 날 사이에 하루 이상 쉬게(주 2~3회).
@@ -74,7 +75,7 @@ ${lines.join('\n')}
 
 규칙:
 • days 는 월~일 7개, 순서대로.
-• type: weight | swim | cardio | etc | rest. cardio 면 kind 는 ${KINDS.join(', ')} 중 하나, 아니면 null. swim 이면 distance 에 목표 거리(m), cardio 면 km(없으면 null), 그 외 null.
+• type: weight | pt | swim | cardio | etc | rest. cardio 면 kind 는 ${KINDS.join(', ')} 중 하나, 아니면 null. swim 이면 distance 에 목표 거리(m), cardio 면 km(없으면 null), 그 외 null.
 • items: 그날 할 것들. weight 는 종목마다 {name: 종목명, detail: "5세트 · 지난번 무게 유지, 반복수 +1~2"}처럼. swim/cardio 는 구간별(워밍업·본운동·마무리)로.
 • title 은 짧게(예: "무분할 웨이트", "수영 인터벌"). summary 는 이번 주 계획 한두 문장. tips 는 2~3개, 짧게.
 • 한국어로.`;
@@ -83,7 +84,7 @@ ${lines.join('\n')}
 const JSON_HINT = `
 
 반드시 JSON 하나만 답하세요. 형식:
-{"summary": "...", "tips": ["..."], "days": [{"dow": "월", "type": "weight|swim|cardio|etc|rest", "title": "...", "duration": 숫자 또는 null, "kind": 문자열 또는 null, "distance": 숫자 또는 null, "items": [{"name": "...", "detail": "..."}]}]}`;
+{"summary": "...", "tips": ["..."], "days": [{"dow": "월", "type": "weight|pt|swim|cardio|etc|rest", "title": "...", "duration": 숫자 또는 null, "kind": 문자열 또는 null, "distance": 숫자 또는 null, "items": [{"name": "...", "detail": "..."}]}]}`;
 
 export async function generatePlan({ sample, apiKey, prefs }) {
   const out = sample
@@ -97,7 +98,7 @@ function normalize(out, source) {
   const ws = weekStart(today());
   const days = DOWS.map((dow, i) => {
     const d = byDow[dow] || { type: 'rest' };
-    const type = ['weight', 'swim', 'cardio', 'etc', 'rest'].includes(d.type) ? d.type : 'rest';
+    const type = ['weight', 'pt', 'swim', 'cardio', 'etc', 'rest'].includes(d.type) ? d.type : 'rest';
     return {
       date: addDays(ws, i), dow, type,
       title: typeof d.title === 'string' && d.title ? d.title.slice(0, 30) : type === 'rest' ? '휴식' : '',
@@ -117,27 +118,30 @@ function normalize(out, source) {
 
 /** Claude 없이 쓰는 기본 루틴 */
 export function templatePlan(prefs) {
-  const avail = DOWS.filter((d) => prefs.days.includes(d));
+  const pts = ptDays();
+  const avail = DOWS.filter((d) => prefs.days.includes(d) || pts.includes(d));
   const sets = prefs.minutes >= 60 ? 5 : prefs.minutes >= 45 ? 4 : 3;
   const weightDays = [];
   if (prefs.acts.includes('weight')) {
     // 하루 이상 띄워서 주 2~3회
     for (const d of avail) {
       const i = DOWS.indexOf(d);
-      if (weightDays.length < 3 && !weightDays.some((w) => Math.abs(DOWS.indexOf(w) - i) < 2)) weightDays.push(d);
+      const busy = [...weightDays, ...pts];
+      if (weightDays.length + pts.length < 3 && !pts.includes(d) && !busy.some((w) => Math.abs(DOWS.indexOf(w) - i) < 2)) weightDays.push(d);
     }
   }
   const others = prefs.acts.filter((a) => a !== 'weight');
   let k = 0;
   const days = DOWS.map((dow) => {
     if (!avail.includes(dow)) return { dow, type: 'rest' };
+    if (pts.includes(dow)) return { dow, type: 'pt', title: 'PT 수업', duration: 50, items: [{ name: '트레이너와 수업', detail: `${db.settings.pt?.time || ''} 배운 종목·무게는 기록에 남겨요`.trim() }] };
     if (weightDays.includes(dow)) return { dow, type: 'weight', title: '무분할 웨이트', duration: prefs.minutes, items: myRoutine(db.settings).map((g) => ({ name: g.name, detail: `${sets}세트 · ${lastKg(g.name) ? lastKg(g.name) + 'kg 유지, 반복수 +1~2' : '가벼운 무게로 6회부터'}` })) };
     if (!others.length) return { dow, type: 'rest' };
     const a = others[k++ % others.length];
     if (a === 'swim') return { dow, type: 'swim', title: '수영', duration: prefs.minutes, distance: Math.round(prefs.minutes * 20 / 50) * 50, items: [{ name: '워밍업', detail: '자유형·배영 천천히 200m' }, { name: '본운동', detail: '자유형 50m × 반복, 30초 휴식' }, { name: '마무리', detail: '킥판 100m + 천천히 100m' }] };
     const kinds = cardioKinds(equip());
     const kind = kinds.includes('천국의계단') ? '천국의계단' : '걷기';
-    return { dow, type: 'cardio', title: `유산소 · ${kind}`, kind, duration: Math.min(prefs.minutes, 45), items: [{ name: kind, detail: '대화는 가능하지만 노래는 힘든 강도로' }] };
+    return { dow, type: 'cardio', title: '유산소', kind, duration: Math.min(prefs.minutes, 45), items: [{ name: kind, detail: '대화는 가능하지만 노래는 힘든 강도로' }] };
   });
   return normalize({ days, summary: '기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아 보세요.', tips: ['웨이트는 하루 이상 쉬고 다시 해요.', '다이어트 중엔 무게 유지, 반복수만 조금씩 늘려요.'] }, 'template');
 }

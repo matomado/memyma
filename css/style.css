@@ -304,3 +304,4 @@ textarea { padding: 10px 12px; }
 .equip .pill { font-size: 13px; padding: 6px 11px; }
 .rt-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; }
 .rt-row span { font-weight: 700; font-size: 14px; }
+.tag.pt { background: #fff1e0; color: #c26a00; }

@@ -16,7 +16,7 @@ export function weeklyStats(nWeeks) {
       minutes: sum(ws, (w) => w.duration),
       kcal: sum(ws, (w) => w.kcal),
       days: new Set(ws.map((w) => w.date)).size,
-      swim: by('swim').length, weight: by('weight').length, cardio: by('cardio').length, etc: by('etc').length,
+      swim: by('swim').length, weight: by('weight').length + by('pt').length, pt: by('pt').length, cardio: by('cardio').length, etc: by('etc').length,
       swimM: sum(by('swim'), (w) => w.distance),
       cardioKm: sum(by('cardio'), (w) => w.distance),
     };
@@ -86,12 +86,12 @@ export function recordSummary(n = 28) {
   const days = Array.from({ length: n }, (_, i) => addDays(today(), -(n - 1) + i));
   const lines = days.map((d) => {
     const ws = workoutsOf(d).map((w) => {
-      const p = [{ swim: '수영', weight: '웨이트', cardio: '유산소', etc: '기타' }[w.type]];
+      const p = [{ swim: '수영', weight: '웨이트', cardio: '유산소', etc: '기타', pt: 'PT 수업' }[w.type]];
       if (w.type === 'cardio' && w.kind) p.push(w.kind);
       if (w.type === 'etc' && w.title) p.push(w.title);
       if (w.duration) p.push(`${w.duration}분`);
       if (w.distance) p.push(w.type === 'swim' ? `${w.distance}m` : `${w.distance}km`);
-      if (w.type === 'weight' && w.sets?.length) p.push(w.sets.map((x) => `${x.name} ${setText(x)}`).join(' / '));
+      if ((w.type === 'weight' || w.type === 'pt') && w.sets?.length) p.push(w.sets.map((x) => `${x.name} ${setText(x)}`).join(' / '));
       if (w.kcal) p.push(`${w.kcal}kcal`);
       if (w.avgHr) p.push(`심박 ${w.avgHr}`);
       return p.join(' ');
