@@ -35,6 +35,7 @@ function defaults() {
       apiKey: '',
       bgMode: 'none', // none | header | full
       cardAlpha: 0.9,
+      bgUrl: '',
     },
     foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false })),
     meals: {},     // { 'YYYY-MM-DD': { breakfast: [...], lunch: [...], dinner: [...], snack: [...] } }
@@ -54,11 +55,103 @@ try {
 
 export const db = state;
 
+/* ---------- 저장: 이 기기(localStorage) + claude.ai 계정(db, 있을 때) ---------- */
+let remote = null;      // { db, base } — claude.ai 아티팩트로 열었을 때만
+let lastSent = {};      // docId -> 마지막으로 보낸 JSON
+let flushTimer = null, flushing = null;
+export let onSaveError = () => {};
+export const setSaveErrorHandler = (fn) => (onSaveError = fn);
+export const isCloud = () => !!remote;
+
+function localSave() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* 저장 불가한 환경 */ }
+}
+
 export function save() {
+  localSave();
+  if (remote) {
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, 700);
+  }
+}
+
+// state -> 문서 묶음 (문서 하나당 256KB 제한이 있어서 월별로 나눔)
+function toDocs() {
+  const { apiKey, ...settings } = state.settings; // API 키는 기기에만
+  const docs = { meta: { settings, foods: state.foods } , inbody: { records: state.inbody } };
+  for (const [date, day] of Object.entries(state.meals)) {
+    const id = 'meals-' + date.slice(0, 7);
+    (docs[id] ||= { days: {} }).days[date] = day;
+  }
+  for (const w of state.workouts) {
+    const id = 'workouts-' + w.date.slice(0, 7);
+    (docs[id] ||= { items: [] }).items.push(w);
+  }
+  return docs;
+}
+
+async function flush() {
+  if (flushing) { await flushing; }
+  flushing = (async () => {
+    const docs = toDocs();
+    // 비워진 월 문서도 비운 채로 덮어쓰기
+    for (const id of Object.keys(lastSent)) if (!docs[id]) docs[id] = id.startsWith('meals-') ? { days: {} } : id.startsWith('workouts-') ? { items: [] } : {};
+    for (const [id, body] of Object.entries(docs)) {
+      const json = JSON.stringify(body);
+      if (lastSent[id] === json) continue;
+      try {
+        await remote.db.doc(`${remote.base}/${id}`).set(body);
+        lastSent[id] = json;
+      } catch (e) {
+        onSaveError(e);
+        break;
+      }
+    }
+  })();
+  await flushing;
+  flushing = null;
+}
+
+/** claude.ai 에서 열렸으면 계정 저장소에 연결하고 기록을 불러옴. 연결되면 true */
+export async function initCloud() {
+  if (!window.claude?.use) return false;
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    if (!db || !user) return false;
+    const uid = await user.id();
+    if (!uid) return false;
+    const base = `data/users/${uid}`;
+    const snap = await db.collection(base).get();
+    remote = { db, base };
+    if (snap.empty) {
+      // 처음: 이 기기에 있던 기록을 올림
+      await flush();
+      return true;
+    }
+    const meals = {}, workouts = [];
+    let meta = null, inbody = [];
+    for (const d of snap.docs) {
+      const body = d.data();
+      lastSent[d.id] = JSON.stringify(body);
+      if (d.id === 'meta') meta = body;
+      else if (d.id === 'inbody') inbody = body.records || [];
+      else if (d.id.startsWith('meals-')) Object.assign(meals, body.days || {});
+      else if (d.id.startsWith('workouts-')) workouts.push(...(body.items || []));
+    }
+    const apiKey = state.settings.apiKey;
+    if (meta) {
+      state.settings = { ...defaults().settings, ...meta.settings, apiKey };
+      state.foods = meta.foods || state.foods;
+    }
+    state.meals = meals;
+    state.workouts = workouts;
+    state.inbody = inbody;
+    localSave();
+    return true;
   } catch (e) {
-    alert('저장 공간이 부족합니다. 설정에서 백업 후 정리해 주세요.');
+    console.warn('cloud store unavailable', e);
+    remote = null;
+    return false;
   }
 }
 
@@ -71,6 +164,7 @@ export function replaceAll(data) {
 }
 
 export function getBg() {
+  if (state.settings.bgUrl) return state.settings.bgUrl;
   try { return localStorage.getItem(BG_KEY) || ''; } catch { return ''; }
 }
 export function setBg(dataUrl) {

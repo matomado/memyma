@@ -129,6 +129,29 @@ export async function analyzeWithClaude(jpegDataUrl, apiKey) {
   return { measurements: out.measurements.map(clean), note: out.note || '' };
 }
 
+/* ---------- claude.ai 에서 열었을 때: 키 없이 Claude 사용 ---------- */
+export async function sampleImageReady() {
+  try {
+    const sample = await window.claude?.use?.('sample');
+    if (!sample) return null;
+    const lim = await sample.limits().catch(() => null);
+    return lim?.images ? sample : null;
+  } catch { return null; }
+}
+
+export async function analyzeWithSample(sample, jpegDataUrl) {
+  const blob = await (await fetch(jpegDataUrl)).blob();
+  const keys = METRICS.map((m) => m.key).join(', ');
+  const prompt = PROMPT(today()) + `
+
+반드시 JSON 하나만 답하세요. 형식:
+{"note": "짧은 한국어 메모", "measurements": [{"date": "YYYY-MM-DD", "time": "HH:MM" 또는 null, ${METRICS.map((m) => `"${m.key}": 숫자 또는 null`).join(', ')}}]}
+(키 목록: date, time, ${keys})`;
+  const out = await sample.json(prompt, { images: [blob], modelTier: 'default' });
+  const list = Array.isArray(out?.measurements) ? out.measurements : [];
+  return { measurements: list.map(clean), note: typeof out?.note === 'string' ? out.note : '' };
+}
+
 /* ---------- OCR (API 키 없을 때) ---------- */
 const LABELS = {
   weight: ['체중'],

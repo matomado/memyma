@@ -3,11 +3,12 @@ import {
   today, addDays, parseISO, iso, fmtDate, fmtShort, weekStart, DOW, pad,
   MEAL_SLOTS, dayMeals, ensureDayMeals, itemKcal, intakeOf, hasMeals,
   workoutsOf, burnedOf, inbodySorted, inbodyOn, latestWeight,
+  initCloud, isCloud, setSaveErrorHandler,
 } from './store.js';
 import { lineChart, barChart } from './chart.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
-  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR,
+  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, analyzeWithSample,
 } from './inbody.js';
 
 /* ================= 공통 유틸 ================= */
@@ -41,6 +42,16 @@ function sheet(title, body, { onClose } = {}) {
   document.body.style.overflow = 'hidden';
   return close;
 }
+function ask(msg, okLabel = '삭제') {
+  return new Promise((res) => {
+    let done = false;
+    const body = h(`<div><p style="margin-top:0">${esc(msg)}</p><div class="grid2"><button class="btn">취소</button><button class="btn primary">${esc(okLabel)}</button></div></div>`);
+    const close = sheet('확인', body, { onClose: () => { if (!done) res(false); } });
+    const [no, yes] = body.querySelectorAll('button');
+    no.onclick = () => close();
+    yes.onclick = () => { done = true; res(true); close(); };
+  });
+}
 function dateNav(onChange) {
   const d = ui.date;
   const rel = d === today() ? '오늘' : d === addDays(today(), -1) ? '어제' : d === addDays(today(), 1) ? '내일' : d.slice(0, 4) + '년';
@@ -50,7 +61,7 @@ function dateNav(onChange) {
     <button class="btn sm ghost" data-d="1">▶</button></div>`);
   nav.querySelectorAll('[data-d]').forEach((b) => (b.onclick = () => { ui.date = addDays(ui.date, +b.dataset.d); onChange(); }));
   const inp = nav.querySelector('input');
-  nav.querySelector('.label').onclick = (e) => { if (e.target !== inp) { inp.showPicker ? inp.showPicker() : inp.click(); } };
+  nav.querySelector('.label').onclick = (e) => { if (e.target !== inp) { try { inp.showPicker(); } catch { inp.click(); } } };
   inp.onchange = () => { if (inp.value) { ui.date = inp.value; onChange(); } };
   return nav;
 }
@@ -74,7 +85,7 @@ function applyBackground() {
 }
 
 /* ================= 라우팅 ================= */
-const routes = { home: renderHome, meals: renderMeals, workout: renderWorkout, inbody: renderInbody, calendar: renderCalendar, settings: renderSettings };
+const routes = { home: renderHome, meals: renderMeals, workout: renderWorkout, inbody: renderInbody, calendar: renderCalendar, prefs: renderSettings };
 function route() {
   const name = location.hash.slice(1) || 'home';
   const fn = routes[name] || renderHome;
@@ -92,7 +103,7 @@ function rerender() {
   window.scrollTo(0, y);
 }
 window.addEventListener('hashchange', () => { closeSheets(); route(); window.scrollTo(0, 0); });
-document.getElementById('btn-settings').onclick = () => (location.hash = '#settings');
+document.getElementById('btn-settings').onclick = () => (location.hash = '#prefs');
 
 /* ================= 홈 ================= */
 function renderHome() {
@@ -335,7 +346,7 @@ function foodForm(food, after) {
     save(); close(); after();
   };
   const del = body.querySelector('[data-a=d]');
-  if (del) del.onclick = () => { if (confirm(`'${food.name}'을(를) 목록에서 삭제할까요? (지난 식단 기록은 유지돼요)`)) { db.foods = db.foods.filter((x) => x !== food); save(); close(); after(); } };
+  if (del) del.onclick = () => { ask(`'${food.name}'을(를) 목록에서 삭제할까요? (지난 식단 기록은 유지돼요)`).then((ok) => { if (ok) { db.foods = db.foods.filter((x) => x !== food); save(); close(); after(); } }); };
 }
 
 /* ================= 운동 ================= */
@@ -500,7 +511,7 @@ function workoutForm(existing, type) {
     save(); close(); rerender(); toast('운동을 저장했어요');
   };
   const del = body.querySelector('[data-a=d]');
-  if (del) del.onclick = () => { if (confirm('이 운동 기록을 삭제할까요?')) { db.workouts = db.workouts.filter((x) => x.id !== w.id); save(); close(); rerender(); } };
+  if (del) del.onclick = () => { ask('이 운동 기록을 삭제할까요?').then((ok) => { if (ok) { db.workouts = db.workouts.filter((x) => x.id !== w.id); save(); close(); rerender(); } }); };
 }
 
 /* ================= 인바디 ================= */
@@ -521,21 +532,30 @@ function renderInbody() {
       const img = await fileToImage(file);
       jpeg = imageToJpeg(img);
     } catch { return toast('이미지를 열 수 없어요'); }
+    const sample = await sampleImageReady();
     const key = db.settings.apiKey;
+    const smart = !!(sample || key);
     status.appendChild(h(`<img class="preview-img" src="${jpeg}" alt="">`));
-    const msg = h(`<p class="row small"><span class="spinner"></span><span class="t">${key ? 'Claude가 캡처를 분석하는 중… (10~30초)' : '문자 인식(OCR) 중… 처음엔 엔진을 받느라 조금 걸려요'}</span></p>`);
+    const msg = h(`<p class="row small"><span class="spinner"></span><span class="t">${smart ? 'Claude가 캡처를 읽는 중… (10~30초)' : '문자 인식(OCR) 중… 처음엔 엔진을 받느라 조금 걸려요'}</span></p>`);
     status.appendChild(msg);
     try {
-      const res = key
-        ? await analyzeWithClaude(jpeg, key)
-        : await analyzeWithOCR(jpeg, (p) => (msg.querySelector('.t').textContent = `문자 인식 중… ${Math.round(p * 100)}%`));
+      const res = sample
+        ? await analyzeWithSample(sample, jpeg)
+        : key
+          ? await analyzeWithClaude(jpeg, key)
+          : await analyzeWithOCR(jpeg, (p) => (msg.querySelector('.t').textContent = `문자 인식 중… ${Math.round(p * 100)}%`));
       msg.remove();
       if (!res.measurements.length) { status.appendChild(h(`<p class="small up">측정값을 찾지 못했어요. 직접 입력해 주세요.</p>`)); return; }
-      reviewSheet(res.measurements, res.note + (key ? '' : ' (설정에서 Claude API 키를 넣으면 훨씬 정확하고, 변화 그래프의 여러 날짜도 한 번에 읽어요.)'));
+      reviewSheet(res.measurements, res.note + (smart ? '' : ' (설정에서 Claude API 키를 넣으면 훨씬 정확하고, 변화 그래프의 여러 날짜도 한 번에 읽어요.)'));
     } catch (err) {
       console.error(err);
       msg.remove();
-      const m = err?.status === 401 ? 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.' : `분석 실패: ${esc(err?.message || err)}`;
+      const code = err?.code;
+      const m = err?.status === 401 ? 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.'
+        : code === 'not_granted' ? 'Claude 사용을 허용해야 캡처를 읽을 수 있어요. 직접 입력도 가능해요.'
+        : code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 올려 주세요.'
+        : code === 'invalid_json' ? '캡처에서 값을 제대로 읽지 못했어요. 다시 올리거나 직접 입력해 주세요.'
+        : `분석 실패: ${esc(err?.message || err)}`;
       status.appendChild(h(`<p class="small up">${m}</p>`));
     }
   };
@@ -627,7 +647,7 @@ function reviewSheet(measurements, note, showAll = false, editId = null) {
     save(); close(); rerender(); toast(n ? `${n}건 저장했어요` : '저장할 값이 없어요');
   };
   const del = body.querySelector('[data-a=d]');
-  if (del) del.onclick = () => { if (confirm('이 측정 기록을 삭제할까요?')) { db.inbody = db.inbody.filter((x) => x.id !== editId); save(); close(); rerender(); } };
+  if (del) del.onclick = () => { ask('이 측정 기록을 삭제할까요?').then((ok) => { if (ok) { db.inbody = db.inbody.filter((x) => x.id !== editId); save(); close(); rerender(); } }); };
 }
 
 /* ================= 기록 (주간 / 월간) ================= */
@@ -756,12 +776,21 @@ function renderSettings() {
     try {
       const img = await fileToImage(f);
       const url = imageToJpeg(img, 1400, 0.8);
-      if (!setBg(url)) return toast('사진이 너무 커서 저장하지 못했어요');
+      const assets = await window.claude?.use?.('assets').catch(() => null);
+      if (assets) {
+        // claude.ai: 계정에 올려서 다른 기기에서도 보이게
+        const blob = await (await fetch(url)).blob();
+        const up = await assets.upload(blob);
+        s.bgUrl = up.url;
+      } else {
+        s.bgUrl = '';
+        if (!setBg(url)) return toast('사진이 너무 커서 저장하지 못했어요');
+      }
       if (s.bgMode === 'none') s.bgMode = 'header';
       save(); applyBackground(); rerender();
     } catch { toast('사진을 열 수 없어요'); }
   };
-  card.querySelector('[data-a=rm]')?.addEventListener('click', () => { setBg(''); applyBackground(); rerender(); });
+  card.querySelector('[data-a=rm]')?.addEventListener('click', () => { setBg(''); s.bgUrl = ''; save(); applyBackground(); rerender(); });
   card.querySelectorAll('.mode button').forEach((b) => { b.classList.toggle('on', b.dataset.v === s.bgMode); b.onclick = () => { s.bgMode = b.dataset.v; save(); applyBackground(); rerender(); }; });
   const rng = card.querySelector('input[type=range]');
   if (rng) rng.oninput = () => { s.cardAlpha = +rng.value; save(); applyBackground(); rng.previousElementSibling.textContent = `카드 불투명도 (${Math.round(s.cardAlpha * 100)}%)`; };
@@ -783,6 +812,7 @@ function renderSettings() {
   $view.appendChild(goal);
 
   const ai = h(`<div class="card"><h2>인바디 캡처 자동 분석</h2>
+    ${isCloud() ? '<p class="small good" style="margin-top:0"><b>claude.ai에서 열려 있어서 API 키 없이 Claude가 캡처를 읽어요.</b> 아래 키는 다른 곳(GitHub Pages 등)에서 열 때만 필요해요.</p>' : ''}
     <p class="small" style="margin-top:0">Claude API 키를 넣으면 캡처를 Claude가 읽어서 정확하게 입력해요. '변화' 그래프 화면처럼 여러 날짜가 있는 캡처도 한 번에 가져와요.
     키가 없으면 무료 문자 인식(OCR)을 쓰는데, 정확도가 낮아서 확인이 더 필요해요.</p>
     <label class="field"><span>Claude API 키 (console.anthropic.com 에서 발급)</span><input type="password" value="${esc(s.apiKey)}" placeholder="sk-ant-..." autocomplete="off"></label>
@@ -791,12 +821,19 @@ function renderSettings() {
   $view.appendChild(ai);
 
   const data = h(`<div class="card"><h2>데이터</h2>
-    <p class="small muted" style="margin-top:0">기록은 이 기기 브라우저에 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.</p>
+    <p class="small muted" style="margin-top:0">${isCloud() ? '기록은 내 claude.ai 계정에 저장돼서 폰·PC 어디서 열어도 같아요. 나만 볼 수 있어요.' : '기록은 이 기기 브라우저에 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.'}</p>
     <div class="grid2"><button class="btn" data-a="exp">백업 파일 저장</button><label class="btn">백업 불러오기<input type="file" accept="application/json,.json" hidden></label></div>
     <button class="btn danger block" data-a="reset" style="margin-top:10px">모든 기록 삭제</button></div>`);
-  data.querySelector('[data-a=exp]').onclick = () => {
+  data.querySelector('[data-a=exp]').onclick = async () => {
     const out = { ...db, settings: { ...db.settings, apiKey: '' } };
-    const blob = new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' });
+    const json = JSON.stringify(out, null, 1);
+    const downloads = await window.claude?.use?.('downloads').catch(() => null);
+    if (downloads) {
+      try { await downloads.save({ filename: `memyma-backup-${today()}.json`, data: json }); toast('백업 파일을 저장했어요'); }
+      catch { toast('저장을 취소했어요'); }
+      return;
+    }
+    const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `memyma-backup-${today()}.json`;
@@ -809,15 +846,15 @@ function renderSettings() {
     try {
       const obj = JSON.parse(await f.text());
       if (!obj.foods || !obj.meals) throw new Error();
-      if (!confirm('현재 기록을 백업 파일 내용으로 바꿀까요?')) return;
+      if (!(await ask('현재 기록을 백업 파일 내용으로 바꿀까요?', '바꾸기'))) return;
       const key = db.settings.apiKey;
       replaceAll(obj);
       if (!db.settings.apiKey) { db.settings.apiKey = key; save(); }
       applyBackground(); rerender(); toast('백업을 불러왔어요');
     } catch { toast('올바른 백업 파일이 아니에요'); }
   };
-  data.querySelector('[data-a=reset]').onclick = () => {
-    if (!confirm('식단·운동·인바디 기록을 모두 삭제할까요? 되돌릴 수 없어요.')) return;
+  data.querySelector('[data-a=reset]').onclick = async () => {
+    if (!(await ask('식단·운동·인바디 기록을 모두 삭제할까요? 되돌릴 수 없어요.'))) return;
     db.meals = {}; db.workouts = []; db.inbody = [];
     save(); rerender(); toast('기록을 삭제했어요');
   };
@@ -825,5 +862,7 @@ function renderSettings() {
 }
 
 /* ================= 시작 ================= */
+setSaveErrorHandler((e) => toast(e?.code === 'quota_exceeded' ? '저장 공간이 가득 찼어요. 백업 후 오래된 기록을 정리해 주세요.' : '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'));
 applyBackground();
 route();
+initCloud().then((ok) => { if (ok) { applyBackground(); rerender(); } });
