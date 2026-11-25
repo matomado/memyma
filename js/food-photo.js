@@ -92,3 +92,40 @@ function tidy(out, foods) {
     }));
   return { items, note: typeof out?.note === 'string' ? out.note : '' };
 }
+
+/* ---------- 영양성분표 사진 → 음식 1개 ---------- */
+const LABEL_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['found', 'name', 'amount', 'unit', 'kcal', 'groups', 'note'],
+  properties: {
+    found: { type: 'boolean' },
+    name: { type: 'string' },
+    amount: { type: 'number' }, unit: { type: 'string' }, kcal: { type: 'number' },
+    groups: { type: 'array', items: { type: 'string', enum: ['carb', 'protein', 'fiber'] } },
+    note: { type: 'string' },
+  },
+};
+const LABEL_PROMPT = `이 사진은 식품 포장의 영양성분표(또는 제품 포장)입니다(여러 장이면 같은 제품의 앞·뒷면). 식단 기록용으로 이 제품 하나를 정리하세요.
+- name: 제품 이름(보이면 그대로, 안 보이면 짧은 일반 이름).
+- 기준량 정하기: 한 번에 다 먹는 제품(편의점 도시락, 삼각김밥, 프로틴바, 요거트 1컵, 음료 1병, 과자 1봉 등)이면 amount=1, unit="개(총 내용량 120g)"처럼 포장 1개 기준, kcal=총 내용량 열량.
+  여러 번 나눠 먹는 제품(우유 1L, 시리얼, 견과 큰 봉지 등)이면 표에 적힌 1회 제공량 기준(예: amount=30, unit="g"), kcal=1회 제공량 열량.
+- 표에 "총 내용량 OOg, 100g당 OOkcal"만 있으면 총 내용량 열량을 계산해서 포장 1개 기준으로.
+- groups: 영양성분을 보고 주요 역할. 탄수화물이 많으면 carb, 단백질이 열량의 20% 이상이면 protein, 식이섬유 3g 이상이거나 채소·과일 제품이면 fiber. 여러 개 가능.
+- note: 기준을 한 줄로(예: "총 내용량 120g 1개 기준, 단백질 20g").
+- 영양성분표나 열량을 찾을 수 없으면 found=false.
+- 숫자는 표에 적힌 값만 쓰고 추측하지 마세요.`;
+
+export async function analyzeLabel({ sample, apiKey, jpegs }) {
+  const out = sample
+    ? await sample.json(LABEL_PROMPT + '\n\n반드시 JSON 하나만 답하세요. 형식: {"found": true, "name": "...", "amount": 숫자, "unit": "...", "kcal": 숫자, "groups": ["protein"], "note": "..."}', { images: jpegs.slice(0, 3).map(dataUrlToBlob), modelTier: 'default' })
+    : await claudeImageJSON(jpegs.slice(0, 3), apiKey, LABEL_PROMPT, LABEL_SCHEMA);
+  if (!out || out.found === false || !isFinite(+out.kcal)) return null;
+  return {
+    name: String(out.name || '').trim().slice(0, 40),
+    amount: +out.amount > 0 ? +out.amount : 1,
+    unit: String(out.unit || '개').trim().slice(0, 24) || '개',
+    kcal: Math.max(0, Math.round(+out.kcal)),
+    groups: Array.isArray(out.groups) ? out.groups.filter((g) => ['carb', 'protein', 'fiber'].includes(g)) : [],
+    note: typeof out.note === 'string' ? out.note : '',
+  };
+}

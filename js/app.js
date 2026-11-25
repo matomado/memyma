@@ -12,7 +12,7 @@ import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from
 import { EQUIPMENT, ALL_EQUIP, MY_GYM, identifyEquipment, myRoutine, machineRoutine, freeRoutine, optionsFor } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
-import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
+import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
 import { weeklyStats, swimPaces, comments, coachPrompt } from './workout-analysis.js';
 import {
@@ -331,7 +331,8 @@ function addFoodSheet(date, slot, label) {
     <div class="food-grid"></div>
     <div class="hr"></div>
     <div class="picked"></div>
-    <details style="margin:10px 0"><summary class="small" style="cursor:pointer">목록에 없는 음식 직접 입력</summary>
+    <details style="margin:10px 0"><summary class="small" style="cursor:pointer">목록에 없는 음식 직접 입력 · 영양성분표</summary>
+      <button type="button" class="btn sm block lblbtn" style="margin-top:8px">🏷️ 영양성분표 사진으로 등록하고 추가</button>
       <div class="grid2" style="margin-top:8px">
         <label class="field"><span>이름</span><input type="text" class="nn"></label>
         <label class="field"><span>kcal</span><input type="number" inputmode="decimal" class="nk"></label>
@@ -382,6 +383,13 @@ function addFoodSheet(date, slot, label) {
     okBtn.textContent = sel.size ? `${sel.size}개 추가 · ${kc(total)} kcal` : '추가하기';
   }
   body.querySelector('.q').oninput = drawGrid;
+  body.querySelector('.lblbtn').onclick = () => {
+    close();
+    foodForm(null, rerender, { label: true, onSaved: (f) => {
+      ensureDayMeals(date)[slot].push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty: 1, groups: f.groups || [] });
+      save(); rerender(); toast(`'${f.name}'을(를) ${label}에 추가했어요 (자주 먹는 음식에도 저장)`);
+    } });
+  };
   const askAI = () => {
     const q = body.querySelector('.q').value.trim();
     if (!q) return;
@@ -543,11 +551,13 @@ function foodLibrarySheet() {
   sheet('자주 먹는 음식', body, { onClose: rerender });
 }
 
-function foodForm(food, after) {
+function foodForm(food, after, { onSaved, label } = {}) {
   const f = food || { name: '', amount: 1, unit: '개', kcal: '' };
   const body = h(`<div>
+    <label class="btn block" style="margin-bottom:12px">🏷️ 영양성분표 사진으로 채우기<input type="file" accept="image/*" multiple hidden class="lbl"></label>
+    <div class="lblmsg small" style="margin:-4px 0 10px"></div>
     <label class="field"><span>음식 이름</span><input type="text" class="n" value="${esc(f.name)}" placeholder="예: 닭가슴살 스테이크"></label>
-    <div class="grid3">
+    <div class="grid3" style="grid-template-columns: 0.8fr 1.7fr 0.9fr">
       <label class="field"><span>기준량</span><input type="number" inputmode="decimal" class="a" value="${f.amount}"></label>
       <label class="field"><span>단위</span><input type="text" class="u" value="${esc(f.unit)}" list="units"></label>
       <label class="field"><span>kcal</span><input type="number" inputmode="decimal" class="k" value="${f.kcal}"></label>
@@ -556,16 +566,44 @@ function foodForm(food, after) {
     <datalist id="units"><option>g</option><option>개</option><option>공기</option><option>잔</option><option>ml</option><option>스쿱</option><option>접시</option><option>팩</option><option>봉</option></datalist>
     <p class="small muted" style="margin-top:0">예) 기준량 100, 단위 g, 109kcal → 식단에서 1.5 입력 시 150g · 164kcal</p>
     <div class="row"><button class="btn primary grow" data-a="s">저장</button>${food ? '<button class="btn danger" data-a="d">삭제</button>' : ''}</div></div>`);
-  const groups = [...(f.groups || [])];
+  let groups = [...(f.groups || [])];
   body.querySelector('.grp').appendChild(groupPills(groups));
   const close = sheet(food ? '음식 수정' : '새 음식', body);
+  const lblIn = body.querySelector('.lbl');
+  const msg = body.querySelector('.lblmsg');
+  lblIn.onchange = async (e) => {
+    const jpegs = await readImages(e.target.files);
+    e.target.value = '';
+    if (!jpegs.length) return;
+    const sample = await sampleImageReady();
+    const apiKey = db.settings.apiKey;
+    if (!sample && !apiKey) { msg.textContent = 'Claude를 쓸 수 있을 때만 성분표를 읽을 수 있어요. 직접 입력해 주세요.'; return; }
+    msg.innerHTML = '<span class="spinner"></span> Claude가 영양성분표를 읽는 중…';
+    try {
+      const r = await analyzeLabel({ sample, apiKey, jpegs });
+      if (!r) { msg.innerHTML = '<span class="up">영양성분표를 찾지 못했어요. 열량이 보이게 다시 찍어 주세요.</span>'; return; }
+      if (r.name && !body.querySelector('.n').value.trim()) body.querySelector('.n').value = r.name;
+      else if (r.name && !food) body.querySelector('.n').value = r.name;
+      body.querySelector('.a').value = r.amount;
+      body.querySelector('.u').value = r.unit;
+      body.querySelector('.k').value = r.kcal;
+      groups = r.groups;
+      const g = body.querySelector('.grp'); g.innerHTML = ''; g.appendChild(groupPills(groups));
+      msg.innerHTML = `<span class="good">✓ 성분표를 읽었어요.</span> <span class="muted">${esc(r.note)} 확인 후 저장하세요.</span>`;
+    } catch (err) {
+      console.error(err);
+      msg.innerHTML = `<span class="up">${err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 해 주세요.' : '성분표를 읽지 못했어요. 다시 찍거나 직접 입력해 주세요.'}</span>`;
+    }
+  };
+  if (label) lblIn.click(); // 버튼을 누른 그 순간에 바로 열어야 아이폰에서 사진 선택 창이 떠요
   body.querySelector('[data-a=s]').onclick = () => {
     const name = body.querySelector('.n').value.trim();
     const kcal = parseFloat(body.querySelector('.k').value);
     if (!name || !(kcal >= 0)) return toast('이름과 kcal를 입력해 주세요');
     const rec = { name, amount: parseFloat(body.querySelector('.a').value) || 1, unit: body.querySelector('.u').value.trim() || '개', kcal, groups: [...groups] };
-    if (food) Object.assign(food, rec); else db.foods.push({ id: uid(), fav: false, ...rec });
-    save(); close(); after();
+    let saved = food;
+    if (food) Object.assign(food, rec); else { saved = { id: uid(), fav: false, ...rec }; db.foods.push(saved); }
+    save(); close(); onSaved ? onSaved(saved) : after();
   };
   const del = body.querySelector('[data-a=d]');
   if (del) del.onclick = () => { ask(`'${food.name}'을(를) 목록에서 삭제할까요? (지난 식단 기록은 유지돼요)`).then((ok) => { if (ok) { db.foods = db.foods.filter((x) => x !== food); save(); close(); after(); } }); };
