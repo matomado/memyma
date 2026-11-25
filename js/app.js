@@ -964,10 +964,13 @@ async function planPrefsSheet() {
     <div class="field"><span>1회 운동 시간</span><div class="seg mins">${[30, 45, 60, 90].map((m) => `<button type="button" data-m="${m}" class="${prefs.minutes === m ? 'on' : ''}">${m}분</button>`).join('')}</div></div>
     <div class="field"><span>넣을 운동</span><div class="pills acts" style="flex-wrap:wrap">${ACTS.map(([k, l]) => `<button type="button" class="pill ${prefs.acts.includes(k) ? 'on' : ''}" data-a="${k}">${l}</button>`).join('')}</div></div>
     <details class="field eq-box"><summary class="eq-sum"></summary><div class="eq"></div></details>
-    <label class="field"><span>요청사항 (선택)</span><input type="text" class="note" placeholder="예: 무릎이 안 좋아요, 수영은 주 2회만" value="${esc(prefs.note)}"></label>
+    <label class="field"><span>요청사항 (선택)</span><textarea class="note" rows="4" placeholder="예: 무릎이 안 좋아요 / 수영은 주 2회만 / 어제 PT에서 하체(데드리프트, 와이드 스쿼트) 했어요">${esc(prefs.note)}</textarea></label>
     <div class="out"></div>
     <button class="btn primary block go">추천 받기</button></div>`);
   const close = sheet('📅 루틴 추천 조건', body);
+  const noteEl = body.querySelector('.note');
+  const grow = () => { noteEl.style.height = 'auto'; noteEl.style.height = Math.max(110, noteEl.scrollHeight + 2) + 'px'; };
+  noteEl.addEventListener('input', grow); requestAnimationFrame(grow);
   const eqSum = () => { const n = (db.settings.equipment || []).length; body.querySelector('.eq-sum').innerHTML = `🏋️ 헬스장 기구 <b>${n ? n + '개 등록됨' : '등록 안 함'}</b> <span class="small muted">· 눌러서 ${n ? '수정' : '등록'}</span>`; };
   eqSum();
   body.querySelector('.eq').appendChild(equipSection(eqSum));
