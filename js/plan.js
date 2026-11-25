@@ -1,7 +1,8 @@
 // 이번 주 운동 루틴 추천 (Claude, 없으면 기본 템플릿)
 import { db, today, addDays, weekStart, GOAL } from './store.js';
 const equip = () => db.settings.equipment || [];
-const ptDays = () => db.settings.pt?.days || [];
+import { ptThisWeek } from './pt.js';
+const ptDays = () => [...new Set(ptThisWeek().map((p) => DOWS[(new Date(p.date.replace(/-/g, '/')).getDay() + 6) % 7]))];
 import { claudeImageJSON } from './inbody.js';
 import { recordSummary } from './workout-analysis.js';
 import { ROUTINE, lastKg } from './routine.js';
@@ -52,7 +53,7 @@ function prompt(prefs) {
 • 넣을 운동: ${prefs.acts.map((a) => ({ swim: '수영', weight: '웨이트', cardio: '유산소' }[a])).join(', ')}
 • 목적: ${(GOAL[s.goal] || GOAL.diet)[0]} / 성별 ${s.sex === 'male' ? '남성' : '여성'}
 • 요청사항: ${prefs.note || '없음'}
-${ptDays().length ? `• PT 수업: 매주 ${ptDays().join(', ')}${s.pt?.time ? ' ' + s.pt.time : ''} (이 요일은 type "pt", title "PT 수업" 으로 고정. 트레이너와 근력 운동을 하므로 그날 다른 웨이트는 넣지 말고, PT 다음날은 같은 부위 웨이트를 피하기. 개인 웨이트는 PT와 합쳐 주 2~3회 정도로.)\n` : ''}• 헬스장에 있는 기구: ${(s.equipment || []).length ? s.equipment.join(', ') : '등록 안 함(일반적인 헬스장 기준)'}
+${ptDays().length ? `• 이번 주 PT 수업: ${ptThisWeek().map((p) => `${p.date.slice(5).replace('-', '.')}(${DOWS[(new Date(p.date.replace(/-/g, '/')).getDay() + 6) % 7]})${p.time ? ' ' + p.time : ''}`).join(', ')} (이 요일은 type "pt", title "PT 수업" 으로 고정. 트레이너와 근력 운동을 하므로 그날 다른 웨이트는 넣지 말고, PT 다음날은 같은 부위 웨이트를 피하기. 개인 웨이트는 PT와 합쳐 주 2~3회 정도로.)\n` : ''}• 헬스장에 있는 기구: ${(s.equipment || []).length ? s.equipment.join(', ') : '등록 안 함(일반적인 헬스장 기준)'}
 
 [따를 원칙]
 • 웨이트는 무분할: 등·가슴·하체·어깨·이두·삼두를 하루에 한 종목씩 모두, 각 5세트(시간이 부족하면 3~4세트). 근육 회복을 위해 웨이트 날 사이에 하루 이상 쉬게(주 2~3회).

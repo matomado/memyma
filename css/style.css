@@ -305,3 +305,5 @@ textarea { padding: 10px 12px; }
 .rt-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; }
 .rt-row span { font-weight: 700; font-size: 14px; }
 .tag.pt { background: #fff1e0; color: #c26a00; }
+.pt-dot { display: inline-block; font-size: 9px; font-weight: 800; color: #c26a00; background: #fff1e0; border-radius: 4px; padding: 0 3px; margin-left: 2px; letter-spacing: 0; }
+.chip.pt-chip { background: #fff1e0; color: #c26a00; }

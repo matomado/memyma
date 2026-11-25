@@ -51,7 +51,7 @@ function defaults() {
       goal: 'diet',     // diet | maintain | bulk (체중 × 25 / 30 / 35)
       autoKcal: false,  // 체중이 바뀌면 목표 kcal 자동 조정
       equipment: [],    // 우리 헬스장 기구
-      pt: { total: null, done0: 0, days: [], time: '' }, // PT 등록 횟수·이미 받은 횟수·정기 요일·시간
+      pt: { total: null, done0: 0, days: [], time: '', bookings: [] }, // PT 등록 횟수·이미 받은 횟수·고정 요일·기본 시간·날짜별 예약
     },
     foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false, groups: DEFAULT_GROUPS[name] || [] })),
     meals: {},     // { 'YYYY-MM-DD': { breakfast: [...], lunch: [...], dinner: [...], snack: [...] } }

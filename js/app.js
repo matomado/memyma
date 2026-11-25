@@ -7,6 +7,7 @@ import {
   weightOn, weightSeries, GOAL, goalKcal, syncKcalTarget, fillFoodGroups, GROUPS,
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
+import { bookings, bookingOn, addBooking, removeBooking, ptPlanOn, nextPt, pruneBookings, dowOf, ptDone } from './pt.js';
 import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
 import { EQUIPMENT, ALL_EQUIP, MY_GYM, identifyEquipment, myRoutine, machineRoutine, freeRoutine, optionsFor } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
@@ -165,6 +166,12 @@ function renderHome() {
 
   const ws = workoutsOf(t);
   const wcard = h(`<div class="card"><h2>오늘 운동 <a href="#workout" class="btn sm">+ 기록</a></h2></div>`);
+  const tpt = ptPlanOn(t);
+  if (tpt && !ptDone(t)) {
+    const r = h(`<div class="today-plan"><span>🧑‍🏫 오늘 <b>${tpt.time || ''} PT</b> 있어요</span><button class="btn sm primary">기록하기</button></div>`);
+    r.querySelector('button').onclick = () => workoutForm(null, 'pt');
+    wcard.appendChild(r);
+  }
   const todayPlan = curPlan()?.days.find((d) => d.date === t);
   if (todayPlan) {
     const tp = h(`<div class="today-plan"><span>${todayPlan.type === 'rest' ? '😴 오늘은 쉬는 날이에요' : `추천: <b>${PLAN_ICON[todayPlan.type]} ${esc(todayPlan.title)}</b>${todayPlan.duration ? ` · ${todayPlan.duration}분` : ''}`}</span>${todayPlan.type !== 'rest' && !planDone(todayPlan) ? '<button class="btn sm primary">기록하기</button>' : planDone(todayPlan) ? '<span class="chip ok">✓ 완료</span>' : ''}</div>`);
@@ -613,7 +620,11 @@ function renderWorkout() {
   etcB.onclick = () => workoutForm(null, 'etc');
   card.appendChild(etc);
   const pst = ptStatus();
-  if (pst) card.appendChild(h(`<div class="today-plan" style="margin:10px 0 0"><span>🧑‍🏫 ${pst.html}</span></div>`));
+  if (pst || bookings().length) {
+    const row = h(`<div class="today-plan" style="margin:10px 0 0"><span>🧑‍🏫 ${pst?.html || 'PT 예약'}</span><button class="btn sm">+ 예약</button></div>`);
+    row.querySelector('button').onclick = () => ptBookSheet();
+    card.appendChild(row);
+  }
   $view.appendChild(card);
 
   $view.appendChild(planCard());
@@ -711,31 +722,78 @@ const ptCount = (excludeId) => db.workouts.filter((w) => w.type === 'pt' && w.id
 const nextPtNo = () => (+db.settings.pt?.done0 || 0) + ptCount() + 1;
 function ptStatus() {
   const pt = db.settings.pt || {};
-  if (!pt.total && !(pt.days || []).length) return null;
+  if (!pt.total && !(pt.days || []).length && !(pt.bookings || []).length && !ptCount()) return null;
   const used = (+pt.done0 || 0) + ptCount();
   const remain = pt.total ? pt.total - used : null;
-  let next = '';
-  for (let i = 0; i < 14 && (pt.days || []).length; i++) {
-    const d = addDays(today(), i);
-    if (pt.days.includes(DOW_KR[parseISO(d).getDay()]) && !workoutsOf(d).some((w) => w.type === 'pt')) { next = `${fmtShort(d)}(${DOW_KR[parseISO(d).getDay()]})${pt.time ? ' ' + pt.time : ''}`; break; }
-  }
+  const n = nextPt();
+  const next = n ? `${n.date === today() ? '오늘' : fmtShort(n.date) + '(' + dowOf(n.date) + ')'}${n.time ? ' ' + n.time : ''}` : '';
   const remainText = pt.total ? `${used}/${pt.total}회 · <b>${Math.max(0, remain)}회 남음</b>` : `${used}회 받음`;
-  return { remainText, html: `PT ${remainText}${next ? ` · 다음 PT <b>${next}</b>` : ''}${remain != null && remain <= 3 ? ' <span class="up">· 곧 끝나요</span>' : ''}` };
+  return { remainText, next, html: `PT ${remainText}${next ? ` · 다음 PT <b>${next}</b>` : ' · <span class="muted">다음 예약 없음</span>'}${remain != null && remain <= 3 ? ' <span class="up">· 곧 끝나요</span>' : ''}` };
 }
 const planDone = (d) => d.type !== 'rest' && workoutsOf(d.date).some((w) => w.type === d.type || (d.type === 'etc'));
+
+/** PT 예약 넣기·보기 */
+function ptBookSheet(preDate) {
+  pruneBookings();
+  const pt = db.settings.pt;
+  let date = preDate || addDays(today(), 1);
+  const body = h(`<div>
+    <div class="field"><span>날짜</span><div class="pills days" style="flex-wrap:wrap"></div>
+      <input type="date" class="bd" style="margin-top:8px" value="${date}"></div>
+    <label class="field"><span>시간</span><input type="time" class="bt" value="${esc(pt.time || '')}"></label>
+    <button class="btn primary block add">예약 추가</button>
+    <div class="hr"></div>
+    <h3>예약된 PT</h3><ul class="list bl"></ul></div>`);
+  const close = sheet('📅 PT 예약', body, { onClose: rerender });
+  const dIn = body.querySelector('.bd');
+  const pills = body.querySelector('.days');
+  const drawPills = () => {
+    pills.innerHTML = '';
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(today(), i);
+      const b = h(`<button type="button" class="pill ${d === date ? 'on' : ''}">${i === 0 ? '오늘' : i === 1 ? '내일' : parseISO(d).getDate() + '일'}(${dowOf(d)})${bookingOn(d) ? ' ✓' : ''}</button>`);
+      b.onclick = () => { date = d; dIn.value = d; drawPills(); };
+      pills.appendChild(b);
+    }
+  };
+  dIn.onchange = () => { if (dIn.value) { date = dIn.value; drawPills(); } };
+  const ul = body.querySelector('.bl');
+  const drawList = () => {
+    ul.innerHTML = '';
+    const up = bookings().filter((b) => b.date >= today());
+    if (!up.length) ul.appendChild(h(`<li class="muted small">예약이 없어요</li>`));
+    for (const b of up) {
+      const li = h(`<li><div class="name"><b>${b.date === today() ? '오늘' : fmtShort(b.date)} (${dowOf(b.date)})</b><span class="sub">${b.time || '시간 미정'}${ptDone(b.date) ? ' · 기록 완료' : ''}</span></div><button class="x" aria-label="예약 취소">×</button></li>`);
+      li.querySelector('.x').onclick = () => { removeBooking(b.date); save(); drawList(); drawPills(); toast('예약을 취소했어요'); };
+      ul.appendChild(li);
+    }
+  };
+  body.querySelector('.add').onclick = () => {
+    if (!date) return;
+    addBooking(date, body.querySelector('.bt').value);
+    save(); drawList(); drawPills();
+    toast(`${fmtShort(date)}(${dowOf(date)}) PT 예약을 넣었어요`);
+  };
+  drawPills(); drawList();
+  return close;
+}
 
 function ptCard() {
   const pt = (db.settings.pt ||= { total: null, done0: 0, days: [], time: '' });
   pt.days ||= [];
   const card = h(`<div class="card"><h2>PT 수업</h2>
-    <p class="small muted" style="margin-top:0">등록하면 남은 횟수와 다음 PT를 보여주고, 루틴 추천에서 PT 요일은 PT로 고정해요.</p>
+    <p class="small muted" style="margin-top:0">수업 날짜를 예약해 두면 다음 PT와 남은 횟수를 보여주고, 루틴 추천에서 그날은 PT로 고정해요.</p>
     <div class="grid2">
       <label class="field"><span>등록한 총 횟수</span><input type="number" inputmode="numeric" class="tot" placeholder="예: 20" value="${pt.total ?? ''}"></label>
       <label class="field"><span>앱 쓰기 전 받은 횟수</span><input type="number" inputmode="numeric" class="d0" value="${pt.done0 || ''}" placeholder="0"></label>
     </div>
-    <div class="field"><span>정기 요일</span><div class="pills" style="flex-wrap:wrap">${['월', '화', '수', '목', '금', '토', '일'].map((d) => `<button type="button" class="pill ${pt.days.includes(d) ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div></div>
-    <label class="field"><span>시간 (선택)</span><input type="time" class="tm" value="${esc(pt.time || '')}"></label>
+    <button class="btn primary block bk" style="margin-bottom:12px">📅 PT 예약 날짜 넣기 / 보기</button>
+    <details class="eq-box" style="margin-bottom:12px"><summary class="small">매주 같은 요일에 하면 (선택)</summary>
+      <div class="pills" style="flex-wrap:wrap;margin-top:10px">${['월', '화', '수', '목', '금', '토', '일'].map((d) => `<button type="button" class="pill ${pt.days.includes(d) ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div>
+      <label class="field" style="margin:10px 0 0"><span>기본 시간</span><input type="time" class="tm" value="${esc(pt.time || '')}"></label>
+    </details>
     <p class="small st" style="margin:0"></p></div>`);
+  card.querySelector('.bk').onclick = () => ptBookSheet();
   const st = card.querySelector('.st');
   const show = () => { const s = ptStatus(); st.innerHTML = s ? '🧑‍🏫 ' + s.html : ''; };
   card.querySelector('.tot').onchange = (e) => { pt.total = +e.target.value || null; save(); show(); };
@@ -858,7 +916,7 @@ function planCard() {
     const row = h(`<details class="plan-day ${isToday ? 'today' : ''} ${d.type}" ${isToday ? 'open' : ''}>
       <summary><span class="pd-dow">${d.dow}<small>${fmtShort(d.date)}</small></span>
         <span class="pd-title">${PLAN_ICON[d.type] || ''} ${esc(d.title)}${meta ? `<small>${esc(meta)}</small>` : ''}</span>
-        ${done ? '<span class="chip ok">✓ 완료</span>' : isToday && d.type !== 'rest' ? '<span class="chip today-chip">오늘</span>' : ''}</summary>
+        ${d.type !== 'pt' && ptPlanOn(d.date) && !ptDone(d.date) ? '<span class="chip pt-chip">PT 예약</span>' : ''}${done ? '<span class="chip ok">✓ 완료</span>' : isToday && d.type !== 'rest' ? '<span class="chip today-chip">오늘</span>' : ''}</summary>
       ${d.items.length ? `<ul class="pd-items">${d.items.map((x) => `<li><b>${esc(x.name)}</b> <span>${esc(x.detail)}</span></li>`).join('')}</ul>` : ''}
     </details>`);
     if (d.type !== 'rest') {
@@ -1287,7 +1345,7 @@ function renderWeek() {
     const intake = intakeOf(d), wos = workoutsOf(d), ib = inbodyOn(d);
     const row = h(`<div class="week-day ${d === today() ? 'today' : ''}">
       <div class="head"><b>${fmtDate(d)}</b><span class="${intake > db.settings.kcalTarget ? 'up' : ''}" style="font-weight:700">${hasMeals(d) ? kc(intake) + ' kcal' : '<span class="muted small">식단 없음</span>'}</span></div>
-      <div class="detail">${wos.map((w) => `<span class="tag ${w.type}">${TYPE[w.type].icon} ${esc(workoutDetail(w))}</span>`).join('')}
+      <div class="detail">${ptPlanOn(d) && !ptDone(d) && d >= today() ? `<span class="tag pt">🧑‍🏫 PT 예약 ${ptPlanOn(d).time || ''}</span>` : ''}${wos.map((w) => `<span class="tag ${w.type}">${TYPE[w.type].icon} ${esc(workoutDetail(w))}</span>`).join('')}
         ${weightOn(d) ? `<span class="tag">⚖️ ${nf(weightOn(d))}kg${ib?.pbf != null ? ' · ' + nf(ib.pbf) + '%' : ''}</span>` : ''}
         ${!wos.length && !ib ? '' : ''}</div></div>`);
     row.onclick = () => dayDetail(d);
@@ -1316,7 +1374,7 @@ function renderMonth() {
     const cell = h(`<div class="day ${dt.getMonth() !== m ? 'out' : ''} ${d === today() ? 'today' : ''}">
       <span class="n">${dt.getDate()}</span>
       ${hasMeals(d) ? `<span class="kc ${intake > db.settings.kcalTarget ? 'over' : ''}">${kc(intake)}</span>` : ''}
-      ${wos.length ? `<span class="ic">${[...new Set(wos.map((w) => TYPE[w.type].icon))].join('')}</span>` : ''}
+      ${wos.length || (ptPlanOn(d) && !ptDone(d)) ? `<span class="ic">${[...new Set(wos.map((w) => TYPE[w.type].icon))].join('')}${ptPlanOn(d) && !ptDone(d) && d >= today() ? '<span class="pt-dot">PT</span>' : ''}</span>` : ''}
       ${weightOn(d) ? `<span class="w">${nf(weightOn(d))}</span>` : ''}</div>`);
     cell.onclick = () => dayDetail(d);
     cal.appendChild(cell);
@@ -1350,6 +1408,15 @@ function dayDetail(d) {
     body.appendChild(h(`<div class="hr"></div>`));
     body.appendChild(h(`<h3>인바디</h3>`));
     body.appendChild(h(`<p class="small">${METRICS.filter((m) => ib[m.key] != null).map((m) => `${m.label} <b>${nf(ib[m.key], m.dec)}</b>${m.unit}`).join(' · ')}</p>`));
+  }
+  if (d >= today()) {
+    const b = bookingOn(d);
+    const pr = h(`<div class="today-plan" style="margin-top:12px"><span>🧑‍🏫 ${b ? `PT 예약 <b>${b.time || '시간 미정'}</b>` : 'PT 예약 없음'}</span><button class="btn sm">${b ? '예약 취소' : 'PT 예약'}</button></div>`);
+    pr.querySelector('button').onclick = () => {
+      if (b) { removeBooking(d); save(); toast('예약을 취소했어요'); close(); rerender(); }
+      else { close(); ptBookSheet(d); }
+    };
+    body.appendChild(pr);
   }
   const btns = h(`<div class="grid2" style="margin-top:14px"><button class="btn" data-go="meals">식단 기록하기</button><button class="btn" data-go="workout">운동 기록하기</button></div>`);
   body.appendChild(btns);
