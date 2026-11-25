@@ -40,7 +40,7 @@ a.btn { text-decoration: none; }
 body.bg-full #bg-layer { display: block; }
 body.bg-full { background: #f2f2f2; }
 body.bg-full .card { background: rgba(255, 255, 255, var(--card-alpha)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-body.bg-full #top { background: rgba(255,255,255,var(--card-alpha)); }
+body.bg-full #top { background: var(--bg); }
 
 /* ---------- header ---------- */
 #top {
