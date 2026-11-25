@@ -764,11 +764,12 @@ function workoutForm(existing, type, preset = {}) {
   const body = h(`<div>
     <label class="field"><span>날짜</span><input type="date" class="dt" value="${w.date}"></label>
     <div class="typed"></div>
-    <div class="grid2">
-      <label class="field"><span>운동 시간 (분)</span><input type="number" inputmode="numeric" class="du" value="${w.duration || ''}"></label>
-      <label class="field"><span>소모 kcal <em class="small muted auto"></em></span><input type="number" inputmode="numeric" class="kc" value="${w.kcal || ''}"></label>
-      <label class="field"><span>평균 심박수 (bpm, 선택)</span><input type="number" inputmode="numeric" class="hrate" value="${w.avgHr || ''}"></label>
+    <div class="grid3">
+      <label class="field"><span>시간 (분)</span><input type="number" inputmode="numeric" class="du" value="${w.duration || ''}"></label>
+      <label class="field"><span>소모 kcal</span><input type="number" inputmode="numeric" class="kc" value="${w.kcal || ''}"></label>
+      <label class="field"><span>평균 심박</span><input type="number" inputmode="numeric" class="hrate" placeholder="선택" value="${w.avgHr || ''}"></label>
     </div>
+    <p class="help auto"></p>
     <div class="field"><span>강도</span><div class="seg it">${INTENSITY.map(([k, l]) => `<button type="button" data-k="${k}" class="${w.intensity === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <label class="field"><span>메모</span><textarea class="me" placeholder="컨디션, 느낀 점 등">${esc(w.memo)}</textarea></label>
     <div class="row"><button class="btn primary grow" data-a="s">저장</button>${existing ? '<button class="btn danger" data-a="d">삭제</button>' : ''}</div>
@@ -778,7 +779,7 @@ function workoutForm(existing, type, preset = {}) {
   const autoLbl = body.querySelector('.auto');
   const recalc = () => {
     const est = estimateKcal(w);
-    autoLbl.textContent = w.kcalManual ? (w.source === 'watch' ? '(애플워치 활동 kcal)' : '(직접 입력)') : `(자동 · ${latestWeight() || 60}kg 기준)`;
+    autoLbl.textContent = w.kcalManual ? (w.source === 'watch' ? '소모 kcal은 애플워치 활동 칼로리예요.' : '소모 kcal은 직접 입력한 값이에요.') : `소모 kcal은 시간·강도·체중(${latestWeight() || 60}kg)으로 자동 계산돼요. 직접 고쳐도 돼요.`;
     if (!w.kcalManual) { w.kcal = est; kcIn.value = est || ''; }
   };
   const pills = (arr, cur, multi, onPick) => {
@@ -807,9 +808,10 @@ function workoutForm(existing, type, preset = {}) {
       typed.appendChild(f);
     } else if (w.type === 'weight') {
       typed.appendChild(h(`<div class="field"><span>부위</span></div>`)).appendChild(pills(PARTS, w.parts, true, (x) => toggle(w.parts, x)));
-      const box = h(`<div class="field"><span class="small muted">종목 · 회는 세트별로 쉼표나 점으로 (예: 10,9,9,8,6)</span>
+      const box = h(`<div class="field"><span>종목</span>
         <button type="button" class="btn sm block tpl" style="margin:6px 0">📋 무분할 루틴 불러오기 (6종목)</button>
-        <div class="set-head" style="margin-top:4px"><span>운동</span><span>kg</span><span>회 (세트별)</span><span>세트</span><span></span></div><div class="sets"></div>
+        <div class="set-head"><span>운동</span><span>kg</span><span>세트별 회수</span><span>세트</span><span></span></div><div class="sets"></div>
+        <p class="help" style="margin-top:0">세트별 회수는 쉼표나 점으로 이어서 적어요. 예: 10,9,9,8,6</p>
         <datalist id="lifts">${[...new Set([...ROUTINE_NAMES, ...LIFTS])].map((l) => `<option>${l}</option>`).join('')}</datalist>
         <button type="button" class="btn sm ghost add">+ 종목 추가</button></div>`);
       const setsEl = box.querySelector('.sets');
@@ -848,7 +850,7 @@ function workoutForm(existing, type, preset = {}) {
     }
   }
   body.querySelector('.du').oninput = (e) => { w.duration = e.target.value; recalc(); };
-  kcIn.oninput = () => { w.kcalManual = kcIn.value !== ''; w.kcal = +kcIn.value || 0; if (!w.kcalManual) recalc(); else autoLbl.textContent = '(직접 입력)'; };
+  kcIn.oninput = () => { w.kcalManual = kcIn.value !== ''; w.kcal = +kcIn.value || 0; if (!w.kcalManual) recalc(); else autoLbl.textContent = '소모 kcal은 직접 입력한 값이에요.'; };
   body.querySelectorAll('.it button').forEach((b) => (b.onclick = () => { w.intensity = b.dataset.k; body.querySelectorAll('.it button').forEach((x) => x.classList.toggle('on', x === b)); recalc(); }));
   drawTyped(); recalc();
 
