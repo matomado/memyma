@@ -1,5 +1,6 @@
 // 운동 분석: 주별 통계 + 자동 코멘트 + Claude 코치용 요약
-import { db, today, addDays, weekStart, fmtShort, workoutsOf, intakeOf, hasMeals, burnedOf, inbodySorted } from './store.js';
+import { db, today, addDays, weekStart, fmtShort, workoutsOf, intakeOf, hasMeals, burnedOf, inbodySorted, weightOn, GOAL } from './store.js';
+import { setText } from './routine.js';
 
 const sum = (arr, f) => arr.reduce((a, x) => a + (+f(x) || 0), 0);
 
@@ -91,17 +92,25 @@ export function coachPrompt() {
       if (w.type === 'etc' && w.title) p.push(w.title);
       if (w.duration) p.push(`${w.duration}분`);
       if (w.distance) p.push(w.type === 'swim' ? `${w.distance}m` : `${w.distance}km`);
-      if (w.type === 'weight' && w.sets?.length) p.push(w.sets.map((x) => `${x.name} ${x.kg || '-'}kg×${x.reps || '-'}×${x.sets || '-'}`).join('/'));
+      if (w.type === 'weight' && w.sets?.length) p.push(w.sets.map((x) => `${x.name} ${setText(x)}`).join(' / '));
       if (w.kcal) p.push(`${w.kcal}kcal`);
       if (w.avgHr) p.push(`심박 ${w.avgHr}`);
       return p.join(' ');
     });
-    return `${d}: 섭취 ${hasMeals(d) ? intakeOf(d) + 'kcal' : '기록없음'} | 운동 ${ws.length ? ws.join(', ') : '없음'}`;
+    const kg = weightOn(d);
+    return `${d}: 체중 ${kg ? kg + 'kg' : '-'} | 섭취 ${hasMeals(d) ? intakeOf(d) + 'kcal' : '기록없음'} | 운동 ${ws.length ? ws.join(', ') : '없음'}`;
   });
   const ib = inbodySorted().slice(-6).map((r) => `${r.date}: 체중 ${r.weight ?? '-'}kg, 골격근 ${r.smm ?? '-'}kg, 체지방률 ${r.pbf ?? '-'}%`);
   return `당신은 다정하지만 현실적인 다이어트·운동 코치입니다. 아래 기록을 보고 이 사람에게 조언해 주세요.
 
-[정보] 성별 ${s.sex === 'male' ? '남성' : '여성'}, 키 ${s.height || '모름'}cm, 목표 체중 ${s.goalWeight || '모름'}kg, 하루 섭취 목표 ${s.kcalTarget}kcal. 주로 하는 운동: 수영, 웨이트, 유산소.
+[정보] 성별 ${s.sex === 'male' ? '남성' : '여성'}, 키 ${s.height || '모름'}cm, 목표 체중 ${s.goalWeight || '모름'}kg, 현재 목적: ${(GOAL[s.goal] || GOAL.diet)[0]}, 하루 섭취 목표 ${s.kcalTarget}kcal. 주로 하는 운동: 수영, 웨이트(무분할 루틴), 유산소.
+
+[이 사람이 따르는 원칙 — 조언은 이 원칙에 맞춰 주세요]
+• 살 빼기는 식단 80%, 운동 20%. 운동 칼로리만큼 더 먹지 않는다. 워치 칼로리는 부풀려져 있을 수 있다.
+• 매일 아침 체중을 재고, 7일 평균 추세로 먹는 양을 100~200kcal씩 조절한다. 다이어트는 하루 약 100g 감량이 적당(더 빠르면 조금 더 먹기), 근육 증가는 한 달 1kg 미만 증가.
+• 목표 칼로리: 다이어트 체중×25, 유지·린매스업 ×30, 근육 증가 ×35 (추정치).
+• 매 끼니 탄수화물+단백질+섬유질. 단백질을 무리하게 챙길 필요는 없다. 저염식·고구마 식단은 특별한 일정 직전에만.
+• 근력: 풀다운, 인클라인 벤치, 스쿼트, 밀리터리프레스, 바벨컬, 스컬크러셔 무분할 5세트. 6회로 시작, 4~5세션 유지 후 2개 추가, 5세트 10회 되면 무게 증량. 다이어트 중엔 중량 욕심 없이 근육 유지가 목표.
 
 [최근 4주 기록]
 ${lines.join('\n')}
@@ -113,8 +122,8 @@ ${ib.length ? ib.join('\n') : '기록 없음'}
 - 한국어 존댓말, 마크다운 기호(#, *, **) 없이 일반 글로. 항목 앞에는 "•"만 사용.
 - 아래 네 부분으로, 전체 600자 안팎:
   1. 잘하고 있는 점
-  2. 아쉬운 점 (기록에 근거해서 구체적으로)
+  2. 아쉬운 점 (기록에 근거해서 구체적으로. 체중 추세와 섭취량을 연결해서)
   3. 다음 주 운동 계획 (요일별로 짧게, 수영·웨이트·유산소를 섞어서)
-  4. 식단 한 가지 팁
+  4. 식단: 체중 추세를 보고 하루 섭취를 몇 kcal 조절할지 숫자로 제안 + 한 가지 팁
 - 기록이 부족하면 부족하다고 말하고, 없는 사실을 지어내지 마세요.`;
 }

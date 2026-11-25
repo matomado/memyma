@@ -237,9 +237,9 @@ svg.chart .hit { fill: transparent; cursor: pointer; }
 .food-item b { display: block; font-size: 14px; }
 .food-item span { font-size: 12px; color: var(--muted); }
 
-.set-row { display: grid; grid-template-columns: 1fr 62px 56px 56px 28px; gap: 6px; align-items: center; margin-bottom: 6px; }
+.set-row { display: grid; grid-template-columns: 1fr 54px 96px 44px 28px; gap: 6px; align-items: center; margin-bottom: 6px; }
 .set-row input { padding: 8px; }
-.set-head { display: grid; grid-template-columns: 1fr 62px 56px 56px 28px; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.set-head { display: grid; grid-template-columns: 1fr 54px 96px 44px 28px; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 
 @media (min-width: 600px) {
   .cal .day { min-height: 90px; font-size: 12px; padding: 6px; }
@@ -251,3 +251,13 @@ svg.chart .hit { fill: transparent; cursor: pointer; }
 .chart-scroll::-webkit-scrollbar { height: 5px; }
 .chart-scroll::-webkit-scrollbar-thumb { background: #c9ced6; border-radius: 99px; }
 .chart-hint { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+
+.lv { font-size: 12px; color: var(--muted); margin: -2px 0 8px 2px; line-height: 1.4; }
+.lv.up { color: var(--green); font-weight: 700; }
+.lv.add { color: var(--blue); font-weight: 700; }
+.bal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; }
+.chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; }
+.chip.ok { background: #e5f7ef; color: #25976d; }
+.chip.no { background: #f4f5f7; color: #a0a6ae; }
+.gseg button { line-height: 1.3; }
+.gseg button small { font-weight: 500; font-size: 11px; }

@@ -21,6 +21,18 @@ const DEFAULT_FOODS = [
   ['아메리카노', 1, '잔', 10],
   ['김치', 50, 'g', 15],
 ];
+// 끼니 균형 체크용: 탄수화물 / 단백질 / 섬유질
+export const GROUPS = [['carb', '탄수'], ['protein', '단백'], ['fiber', '섬유']];
+const DEFAULT_GROUPS = {
+  '현미밥': ['carb', 'fiber'], '흰쌀밥': ['carb'], '닭가슴살': ['protein'], '삶은 계란': ['protein'], '고구마': ['carb', 'fiber'],
+  '그릭요거트': ['protein'], '바나나': ['carb', 'fiber'], '사과': ['carb', 'fiber'], '샐러드(드레싱 X)': ['fiber'], '두부': ['protein'],
+  '연어': ['protein'], '오트밀': ['carb', 'fiber'], '우유': ['protein'], '프로틴 쉐이크': ['protein'], '아몬드': ['protein', 'fiber'],
+  '아메리카노': [], '김치': ['fiber'],
+};
+/** 예전에 만든 음식 목록에도 기본 분류를 채워 줌 */
+export function fillFoodGroups() {
+  for (const f of state.foods) if (!Array.isArray(f.groups) && DEFAULT_GROUPS[f.name]) f.groups = DEFAULT_GROUPS[f.name];
+}
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -36,11 +48,14 @@ function defaults() {
       bgMode: 'none', // none | header | full
       cardAlpha: 0.9,
       bgUrl: '',
+      goal: 'diet',     // diet | maintain | bulk (체중 × 25 / 30 / 35)
+      autoKcal: false,  // 체중이 바뀌면 목표 kcal 자동 조정
     },
-    foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false })),
+    foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false, groups: DEFAULT_GROUPS[name] || [] })),
     meals: {},     // { 'YYYY-MM-DD': { breakfast: [...], lunch: [...], dinner: [...], snack: [...] } }
     workouts: [],  // [{ id, date, type, ... }]
     inbody: [],    // [{ id, date, time, weight, smm, bfm, pbf, ... }]
+    weights: {},   // 매일 아침 체중 { 'YYYY-MM-DD': kg }
   };
 }
 
@@ -49,6 +64,7 @@ try {
   const raw = localStorage.getItem(KEY);
   state = raw ? { ...defaults(), ...JSON.parse(raw) } : defaults();
   state.settings = { ...defaults().settings, ...state.settings };
+  state.weights ||= {};
 } catch {
   state = defaults();
 }
@@ -78,7 +94,7 @@ export function save() {
 // state -> 문서 묶음 (문서 하나당 256KB 제한이 있어서 월별로 나눔)
 function toDocs() {
   const { apiKey, ...settings } = state.settings; // API 키는 기기에만
-  const docs = { meta: { settings, foods: state.foods } , inbody: { records: state.inbody } };
+  const docs = { meta: { settings, foods: state.foods }, inbody: { records: state.inbody }, weights: { days: state.weights || {} } };
   for (const [date, day] of Object.entries(state.meals)) {
     const id = 'meals-' + date.slice(0, 7);
     (docs[id] ||= { days: {} }).days[date] = day;
@@ -137,6 +153,7 @@ export async function initCloud() {
       lastSent[d.id] = json;
       if (d.id === 'meta') meta = body;
       else if (d.id === 'inbody') inbody = body.records || [];
+      else if (d.id === 'weights') state.weights = body.days || {};
       else if (d.id.startsWith('meals-')) Object.assign(meals, body.days || {});
       else if (d.id.startsWith('workouts-')) workouts.push(...(body.items || []));
     }
@@ -219,7 +236,27 @@ export const workoutsOf = (date) => state.workouts.filter((w) => w.date === date
 export const burnedOf = (date) => workoutsOf(date).reduce((s, w) => s + (Number(w.kcal) || 0), 0);
 export const inbodySorted = () => [...state.inbody].sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
 export const inbodyOn = (date) => inbodySorted().filter((r) => r.date === date).pop();
+/** 그날 체중: 아침 체중 기록 우선, 없으면 그날 인바디 체중 */
+export function weightOn(date) {
+  const w = state.weights?.[date];
+  if (w) return w;
+  return inbodyOn(date)?.weight ?? null;
+}
+/** 날짜순 체중 기록 [{date, kg}] (아침 체중 + 인바디) */
+export function weightSeries() {
+  const map = {};
+  for (const r of inbodySorted()) if (r.weight) map[r.date] = r.weight;
+  Object.assign(map, state.weights || {});
+  return Object.keys(map).sort().map((date) => ({ date, kg: map[date] }));
+}
 export function latestWeight() {
-  const list = inbodySorted().filter((r) => r.weight);
-  return list.length ? list[list.length - 1].weight : null;
+  const s = weightSeries();
+  return s.length ? s[s.length - 1].kg : null;
+}
+export const GOAL = { diet: ['다이어트', 25], maintain: ['유지', 30], bulk: ['근육 증가', 35] };
+export const goalKcal = (kg, goal = state.settings.goal) => Math.round((kg * (GOAL[goal] || GOAL.diet)[1]) / 10) * 10;
+/** 자동 맞춤이 켜져 있으면 최근 체중으로 목표 kcal 갱신 */
+export function syncKcalTarget() {
+  const kg = latestWeight();
+  if (state.settings.autoKcal && kg) state.settings.kcalTarget = goalKcal(kg);
 }

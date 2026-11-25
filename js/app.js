@@ -4,7 +4,10 @@ import {
   MEAL_SLOTS, dayMeals, ensureDayMeals, itemKcal, intakeOf, hasMeals,
   workoutsOf, burnedOf, inbodySorted, inbodyOn, latestWeight,
   initCloud, isCloud, setSaveErrorHandler,
+  weightOn, weightSeries, GOAL, goalKcal, syncKcalTarget, fillFoodGroups, GROUPS,
 } from './store.js';
+import { weightFeedback, goalLabel } from './weight.js';
+import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
@@ -144,7 +147,9 @@ function renderHome() {
       <div class="stat"><div class="k">운동 소모</div><div class="v">${kc(burned)}<small>kcal</small></div></div>
       <div class="stat"><div class="k">순 섭취</div><div class="v">${kc(intake - burned)}<small>kcal</small></div></div>
     </div>
+    ${burned > 0 ? '<p class="small muted" style="margin:10px 0 0">💡 목표는 <b>먹은 양</b> 기준이에요. 운동한 만큼 더 먹으면 살이 빠지지 않아요.</p>' : ''}
   </div>`));
+  $view.appendChild(weightCard());
 
   $view.appendChild(h(`<div class="card">
     <h2>최근 인바디 <small>${last ? fmtDate(last.date) : ''}</small></h2>
@@ -168,6 +173,34 @@ function renderHome() {
   $view.appendChild(c);
 }
 
+function weightCard() {
+  const t = today();
+  const cur = db.weights?.[t];
+  const card = h(`<div class="card analysis"><h2>아침 체중 <small>${goalLabel()} 모드 · 목표 ${kc(db.settings.kcalTarget)}kcal</small></h2>
+    <div class="row"><input type="number" inputmode="decimal" step="0.1" class="wkg grow" placeholder="오늘 아침 체중 (kg)" value="${cur ?? ''}"><button class="btn primary">${cur ? '수정' : '기록'}</button></div>
+    <p class="small muted" style="margin:6px 0 4px">일어나서 화장실 다녀온 뒤, 먹기 전에 재면 가장 정확해요.</p>
+    <div class="fb"></div></div>`);
+  const fb = card.querySelector('.fb');
+  weightFeedback().forEach((p) => fb.appendChild(h(`<div class="pt"><span class="dot" style="background:${p.color}"></span><div>${p.html}</div></div>`)));
+  const series = weightSeries().filter((r) => r.date >= addDays(t, -60));
+  if (series.length >= 2) {
+    fb.appendChild(lineChart(series.map((r) => ({ x: fmtShort(r.date), value: r.kg, tip: r.date.slice(2).replace(/-/g, '.') })), { unit: 'kg', decimals: 1, colorFor: () => '#4a7bf7' }));
+  }
+  const inp = card.querySelector('.wkg');
+  const go = () => {
+    const v = parseFloat(inp.value);
+    if (!(v > 20 && v < 300)) return toast('체중을 kg으로 입력해 주세요');
+    db.weights[t] = Math.round(v * 10) / 10;
+    const before = db.settings.kcalTarget;
+    syncKcalTarget();
+    save(); rerender();
+    toast(before !== db.settings.kcalTarget ? `기록했어요 · 목표 ${kc(db.settings.kcalTarget)}kcal로 맞췄어요` : '체중을 기록했어요');
+  };
+  card.querySelector('.btn').onclick = go;
+  inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  return card;
+}
+
 /* ================= 식단 ================= */
 function renderMeals() {
   $view.appendChild(dateNav(rerender));
@@ -188,6 +221,7 @@ function renderMeals() {
       <div class="row" style="margin-top:8px"><button class="btn sm primary" data-a="add">+ 추가</button><button class="btn sm ghost" data-a="copy">이전 ${label} 불러오기</button></div></div>`);
     const ul = card.querySelector('ul');
     if (!items.length) ul.appendChild(h(`<li class="muted small" style="border:0;padding:4px 0">기록 없음</li>`));
+    if (items.length && k !== 'snack') card.insertBefore(balanceRow(items), card.querySelector('.row'));
     items.forEach((it, i) => {
       const li = h(`<li><div class="name"><b>${esc(it.name)}</b><span class="sub">${nf(it.amount * it.qty, 2)}${esc(it.unit)}${it.eaten < 1 ? ` · <span class="up">${eatenText(it.eaten)}</span>` : ''}</span></div><span class="kcal">${kc(itemKcal(it))}</span><button class="x" aria-label="삭제">×</button></li>`);
       li.querySelector('.name').onclick = () => editMealItem(d, k, i);
@@ -225,6 +259,20 @@ function eatenSeg(cur, onPick) {
   seg.querySelectorAll('button').forEach((b) => (b.onclick = () => { mark(+b.dataset.v); onPick(+b.dataset.v); }));
   mark(cur);
   return seg;
+}
+
+const groupsOf = (it) => it.groups || db.foods.find((f) => f.id === it.foodId)?.groups || [];
+const GROUP_TIP = { carb: '밥·빵·고구마 같은 탄수화물', protein: '계란·두부·고기·생선 같은 단백질', fiber: '채소·나물·김치·과일 같은 섬유질' };
+function balanceRow(items) {
+  const have = new Set(items.flatMap(groupsOf));
+  const miss = GROUPS.filter(([g]) => !have.has(g));
+  return h(`<div class="bal">${GROUPS.map(([g, l]) => `<span class="chip ${have.has(g) ? 'ok' : 'no'}">${have.has(g) ? '✓' : '✗'} ${l}</span>`).join('')}
+    ${miss.length ? `<span class="small muted">${miss.map(([g]) => GROUP_TIP[g]).join(', ')}을 곁들이면 좋아요</span>` : '<span class="small good">균형 잡힌 끼니 👍</span>'}</div>`);
+}
+function groupPills(cur) {
+  const box = h(`<div class="pills" style="flex-wrap:wrap">${GROUPS.map(([g, l]) => `<button type="button" class="pill ${cur.includes(g) ? 'on' : ''}" data-g="${g}">${l}</button>`).join('')}</div>`);
+  box.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { const g = b.dataset.g; const i = cur.indexOf(g); i >= 0 ? cur.splice(i, 1) : cur.push(g); b.classList.toggle('on'); }));
+  return box;
 }
 
 function foodUseCount() {
@@ -314,7 +362,7 @@ function addFoodSheet(date, slot, label) {
     const arr = ensureDayMeals(date)[slot];
     for (const [id, qty] of sel) {
       const f = db.foods.find((x) => x.id === id);
-      arr.push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty });
+      arr.push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty, groups: f.groups || [] });
     }
     save(); close(); rerender();
   };
@@ -404,8 +452,8 @@ async function aiMealSheet(date, slot, label, { jpegs, text }) {
     const arr = ensureDayMeals(date)[slot];
     for (const r of used) {
       let foodId = r.foodId || uid();
-      if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false });
-      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1, ...(eaten < 1 ? { eaten } : {}) });
+      if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false, groups: r.groups || [] });
+      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1, groups: r.groups || [], ...(eaten < 1 ? { eaten } : {}) });
     }
     save(); close(); rerender(); toast(`${label}에 ${used.length}개 추가했어요`);
   };
@@ -443,7 +491,7 @@ function foodLibrarySheet() {
     ul.innerHTML = '';
     [...db.foods].sort((a, b) => (b.fav - a.fav) || a.name.localeCompare(b.name)).forEach((f) => {
       const li = h(`<li><button class="x" style="color:${f.fav ? '#f2a33a' : '#ccc'}" aria-label="즐겨찾기">★</button>
-        <div class="name"><b>${esc(f.name)}</b><span class="sub">${nf(f.amount, 2)}${esc(f.unit)}</span></div><span class="kcal">${kc(f.kcal)} kcal</span>
+        <div class="name"><b>${esc(f.name)}</b><span class="sub">${nf(f.amount, 2)}${esc(f.unit)}${f.groups?.length ? ' · ' + f.groups.map((g) => GROUPS.find((x) => x[0] === g)[1]).join('·') : ''}</span></div><span class="kcal">${kc(f.kcal)} kcal</span>
         <button class="btn sm ghost">수정</button></li>`);
       li.querySelector('.x').onclick = () => { f.fav = !f.fav; save(); draw(); };
       li.querySelector('.btn').onclick = () => foodForm(f, draw);
@@ -464,15 +512,18 @@ function foodForm(food, after) {
       <label class="field"><span>단위</span><input type="text" class="u" value="${esc(f.unit)}" list="units"></label>
       <label class="field"><span>kcal</span><input type="number" inputmode="decimal" class="k" value="${f.kcal}"></label>
     </div>
+    <div class="field"><span>영양 분류 (끼니 균형 체크용)</span><div class="grp"></div></div>
     <datalist id="units"><option>g</option><option>개</option><option>공기</option><option>잔</option><option>ml</option><option>스쿱</option><option>접시</option><option>팩</option><option>봉</option></datalist>
     <p class="small muted" style="margin-top:0">예) 기준량 100, 단위 g, 109kcal → 식단에서 1.5 입력 시 150g · 164kcal</p>
     <div class="row"><button class="btn primary grow" data-a="s">저장</button>${food ? '<button class="btn danger" data-a="d">삭제</button>' : ''}</div></div>`);
+  const groups = [...(f.groups || [])];
+  body.querySelector('.grp').appendChild(groupPills(groups));
   const close = sheet(food ? '음식 수정' : '새 음식', body);
   body.querySelector('[data-a=s]').onclick = () => {
     const name = body.querySelector('.n').value.trim();
     const kcal = parseFloat(body.querySelector('.k').value);
     if (!name || !(kcal >= 0)) return toast('이름과 kcal를 입력해 주세요');
-    const rec = { name, amount: parseFloat(body.querySelector('.a').value) || 1, unit: body.querySelector('.u').value.trim() || '개', kcal };
+    const rec = { name, amount: parseFloat(body.querySelector('.a').value) || 1, unit: body.querySelector('.u').value.trim() || '개', kcal, groups: [...groups] };
     if (food) Object.assign(food, rec); else db.foods.push({ id: uid(), fav: false, ...rec });
     save(); close(); after();
   };
@@ -503,7 +554,7 @@ function workoutDetail(w) {
     if (w.parts?.length) p.push(w.parts.join('·'));
     const sets = (w.sets || []).filter((s) => s.name);
     if (sets.length) {
-      const vol = sets.reduce((a, s) => a + (+s.kg || 0) * (+s.reps || 0) * (+s.sets || 0), 0);
+      const vol = sets.reduce((a, s) => a + setVolume(s), 0);
       p.push(`${sets.length}종목`);
       if (vol) p.push(`볼륨 ${kc(vol)}kg`);
     }
@@ -516,7 +567,7 @@ function workoutDetail(w) {
 function workoutList(ws, editable = true) {
   const ul = h(`<ul class="list"></ul>`);
   ws.forEach((w) => {
-    const sets = w.type === 'weight' ? (w.sets || []).filter((s) => s.name).map((s) => `${esc(s.name)} ${s.kg ? s.kg + 'kg×' : ''}${s.reps || '-'}회×${s.sets || '-'}세트`).join('<br>') : '';
+    const sets = w.type === 'weight' ? (w.sets || []).filter((s) => s.name).map((s) => `${esc(s.name)} ${esc(setText(s))}`).join('<br>') : '';
     const li = h(`<li style="align-items:flex-start"><span class="tag ${w.type}">${TYPE[w.type].icon} ${TYPE[w.type].label}</span>
       <div class="name"><b>${esc(workoutDetail(w)) || '-'}</b>${sets ? `<span class="sub">${sets}</span>` : ''}${w.memo ? `<span class="sub">📝 ${esc(w.memo)}</span>` : ''}</div>
       <span class="kcal">${kc(w.kcal || 0)}<span class="small muted"> kcal</span></span></li>`);
@@ -756,18 +807,39 @@ function workoutForm(existing, type, preset = {}) {
       typed.appendChild(f);
     } else if (w.type === 'weight') {
       typed.appendChild(h(`<div class="field"><span>부위</span></div>`)).appendChild(pills(PARTS, w.parts, true, (x) => toggle(w.parts, x)));
-      const box = h(`<div class="field"><span class="small muted">종목</span><div class="set-head" style="margin-top:4px"><span>운동</span><span>kg</span><span>회</span><span>세트</span><span></span></div><div class="sets"></div>
-        <datalist id="lifts">${LIFTS.map((l) => `<option>${l}</option>`).join('')}</datalist>
-        <button type="button" class="btn sm ghost">+ 종목 추가</button></div>`);
+      const box = h(`<div class="field"><span class="small muted">종목 · 회는 세트별로 쉼표나 점으로 (예: 10,9,9,8,6)</span>
+        <button type="button" class="btn sm block tpl" style="margin:6px 0">📋 무분할 루틴 불러오기 (6종목)</button>
+        <div class="set-head" style="margin-top:4px"><span>운동</span><span>kg</span><span>회 (세트별)</span><span>세트</span><span></span></div><div class="sets"></div>
+        <datalist id="lifts">${[...new Set([...ROUTINE_NAMES, ...LIFTS])].map((l) => `<option>${l}</option>`).join('')}</datalist>
+        <button type="button" class="btn sm ghost add">+ 종목 추가</button></div>`);
       const setsEl = box.querySelector('.sets');
       w.sets.forEach((s, i) => {
-        const r = h(`<div class="set-row"><input type="text" list="lifts" placeholder="운동명" value="${esc(s.name)}"><input type="number" inputmode="decimal" value="${s.kg}"><input type="number" inputmode="numeric" value="${s.reps}"><input type="number" inputmode="numeric" value="${s.sets}"><button type="button" class="x">×</button></div>`);
+        const r = h(`<div><div class="set-row"><input type="text" list="lifts" placeholder="운동명" value="${esc(s.name)}"><input type="number" inputmode="decimal" value="${s.kg}"><input type="text" inputmode="decimal" placeholder="10,9,9,8,6" value="${esc(s.reps)}"><input type="number" inputmode="numeric" value="${s.sets}"><button type="button" class="x">×</button></div><div class="lv"></div></div>`);
         const [n, kg, reps, st] = r.querySelectorAll('input');
-        n.oninput = () => (s.name = n.value); kg.oninput = () => (s.kg = kg.value); reps.oninput = () => (s.reps = reps.value); st.oninput = () => (s.sets = st.value);
+        const lv = r.querySelector('.lv');
+        const hint = () => {
+          const p = progressHint(s.name, w.date, w.id);
+          const alts = altsOf(s.name);
+          lv.className = 'lv ' + (p?.level || '');
+          lv.textContent = p ? p.text + (alts.length ? `  ·  대체: ${alts.slice(0, 3).join(', ')}` : '') : '';
+        };
+        n.oninput = () => { s.name = n.value; hint(); };
+        n.onchange = () => { if (!s.kg && lastKg(s.name)) { s.kg = lastKg(s.name); kg.value = s.kg; } };
+        kg.oninput = () => (s.kg = kg.value);
+        reps.oninput = () => { s.reps = reps.value; const l = repsList({ reps: s.reps, sets: 1 }); if (l.length > 1) { s.sets = l.length; st.value = l.length; } };
+        st.oninput = () => (s.sets = st.value);
         r.querySelector('.x').onclick = () => { w.sets.splice(i, 1); drawTyped(); };
+        hint();
         setsEl.appendChild(r);
       });
-      box.querySelector('.btn').onclick = () => { const l = w.sets[w.sets.length - 1]; w.sets.push({ name: '', kg: l?.kg || '', reps: l?.reps || '', sets: l?.sets || '' }); drawTyped(); };
+      box.querySelector('.add').onclick = () => { const l = w.sets[w.sets.length - 1]; w.sets.push({ name: '', kg: l?.kg || '', reps: '', sets: l?.sets || '' }); drawTyped(); };
+      box.querySelector('.tpl').onclick = () => {
+        w.sets = w.sets.filter((x) => x.name.trim());
+        for (const r of ROUTINE) if (!w.sets.some((x) => x.name.replace(/\s/g, '') === r.name.replace(/\s/g, ''))) w.sets.push({ name: r.name, kg: lastKg(r.name), reps: '', sets: 5 });
+        for (const p of ['등', '가슴', '하체', '어깨', '팔']) if (!w.parts.includes(p)) w.parts.push(p);
+        drawTyped();
+        toast('6종목을 불러왔어요. 각 5세트, 6회부터 시작해요');
+      };
       typed.appendChild(box);
     } else {
       const f = h(`<label class="field"><span>운동 이름</span><input type="text" value="${esc(w.title)}" placeholder="예: 필라테스, 요가"></label>`);
@@ -786,10 +858,13 @@ function workoutForm(existing, type, preset = {}) {
     w.memo = body.querySelector('.me').value.trim();
     w.avgHr = +body.querySelector('.hrate').value || null;
     w.duration = +w.duration || 0;
-    if (w.type === 'weight') w.sets = w.sets.filter((s) => s.name.trim());
+    // 회수를 적은 종목만 저장 (루틴에서 불러왔지만 안 한 종목은 빼기)
+    if (w.type === 'weight') w.sets = w.sets.filter((s) => s.name.trim() && String(s.reps ?? '').trim());
+    const ups = w.type === 'weight' ? levelUps(w.sets) : [];
     const i = db.workouts.findIndex((x) => x.id === w.id);
     if (i >= 0) db.workouts[i] = w; else db.workouts.push(w);
-    save(); close(); rerender(); toast('운동을 저장했어요');
+    save(); close(); rerender();
+    toast(ups.length ? `🎉 레벨업! ${ups.join(', ')} 5세트 10회 달성 — ${(db.settings.goal || 'diet') === 'diet' ? '다이어트 중엔 무게 유지도 OK' : '다음엔 무게 올리기'}` : '운동을 저장했어요');
   };
   const del = body.querySelector('[data-a=d]');
   if (del) del.onclick = () => { ask('이 운동 기록을 삭제할까요?').then((ok) => { if (ok) { db.workouts = db.workouts.filter((x) => x.id !== w.id); save(); close(); rerender(); } }); };
@@ -970,7 +1045,7 @@ function renderWeek() {
     const row = h(`<div class="week-day ${d === today() ? 'today' : ''}">
       <div class="head"><b>${fmtDate(d)}</b><span class="${intake > db.settings.kcalTarget ? 'up' : ''}" style="font-weight:700">${hasMeals(d) ? kc(intake) + ' kcal' : '<span class="muted small">식단 없음</span>'}</span></div>
       <div class="detail">${wos.map((w) => `<span class="tag ${w.type}">${TYPE[w.type].icon} ${esc(workoutDetail(w))}</span>`).join('')}
-        ${ib ? `<span class="tag">⚖️ ${nf(ib.weight)}kg${ib.pbf != null ? ' · ' + nf(ib.pbf) + '%' : ''}</span>` : ''}
+        ${weightOn(d) ? `<span class="tag">⚖️ ${nf(weightOn(d))}kg${ib?.pbf != null ? ' · ' + nf(ib.pbf) + '%' : ''}</span>` : ''}
         ${!wos.length && !ib ? '' : ''}</div></div>`);
     row.onclick = () => dayDetail(d);
     list.appendChild(row);
@@ -999,7 +1074,7 @@ function renderMonth() {
       <span class="n">${dt.getDate()}</span>
       ${hasMeals(d) ? `<span class="kc ${intake > db.settings.kcalTarget ? 'over' : ''}">${kc(intake)}</span>` : ''}
       ${wos.length ? `<span class="ic">${[...new Set(wos.map((w) => TYPE[w.type].icon))].join('')}</span>` : ''}
-      ${ib?.weight ? `<span class="w">${nf(ib.weight)}</span>` : ''}</div>`);
+      ${weightOn(d) ? `<span class="w">${nf(weightOn(d))}</span>` : ''}</div>`);
     cell.onclick = () => dayDetail(d);
     cal.appendChild(cell);
   }
@@ -1076,6 +1151,18 @@ function renderSettings() {
   if (rng) rng.oninput = () => { s.cardAlpha = +rng.value; save(); applyBackground(); rng.previousElementSibling.textContent = `카드 불투명도 (${Math.round(s.cardAlpha * 100)}%)`; };
   $view.appendChild(card);
 
+  const kgNow = latestWeight();
+  const gc = h(`<div class="card"><h2>목표 칼로리 계산</h2>
+    <div class="seg gseg">${Object.entries(GOAL).map(([k, [l, f]]) => `<button type="button" data-g="${k}" class="${(s.goal || 'diet') === k ? 'on' : ''}">${l}<br><small>체중×${f}</small></button>`).join('')}</div>
+    <p class="calc" style="margin:12px 0 8px">${kgNow ? `최근 체중 <b>${nf(kgNow)}kg</b> × ${GOAL[s.goal || 'diet'][1]} = <b style="font-size:18px">${kc(goalKcal(kgNow))}kcal</b> <span class="small muted">(지금 목표 ${kc(s.kcalTarget)}kcal)</span>` : '체중 기록이 없어요. 홈에서 아침 체중을 먼저 기록해 주세요.'}</p>
+    <label class="small row" style="margin-bottom:10px"><input type="checkbox" class="auto" ${s.autoKcal ? 'checked' : ''}> 체중을 기록할 때마다 목표 kcal 자동으로 맞추기</label>
+    <button class="btn primary block apply" ${kgNow ? '' : 'disabled'}>이 값으로 목표 설정</button>
+    <p class="small muted" style="margin-bottom:0">공식은 추정치예요. 매일 아침 체중 추세를 보고 100~200kcal씩 조절하세요. 다이어트는 하루 약 100g, 근육 증가는 한 달 1kg 미만이 좋은 속도예요.</p></div>`);
+  gc.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { s.goal = b.dataset.g; syncKcalTarget(); save(); rerender(); }));
+  gc.querySelector('.auto').onchange = (e) => { s.autoKcal = e.target.checked; syncKcalTarget(); save(); rerender(); toast(s.autoKcal ? `목표를 ${kc(s.kcalTarget)}kcal로 맞췄어요` : '자동 맞추기를 껐어요'); };
+  gc.querySelector('.apply').onclick = () => { s.kcalTarget = goalKcal(kgNow); save(); rerender(); toast(`하루 목표를 ${kc(s.kcalTarget)}kcal로 정했어요`); };
+  $view.appendChild(gc);
+
   const goal = h(`<div class="card"><h2>내 정보 · 목표</h2>
     <div class="grid2">
       <label class="field"><span>하루 섭취 목표 (kcal)</span><input type="number" inputmode="numeric" data-k="kcalTarget" value="${s.kcalTarget}"></label>
@@ -1143,6 +1230,7 @@ function renderSettings() {
 
 /* ================= 시작 ================= */
 setSaveErrorHandler((e) => toast(e?.code === 'quota_exceeded' ? '저장 공간이 가득 찼어요. 백업 후 오래된 기록을 정리해 주세요.' : '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'));
+fillFoodGroups();
 applyBackground();
 route();
-initCloud().then((ok) => { if (ok) { applyBackground(); rerender(); } });
+initCloud().then((ok) => { if (ok) { fillFoodGroups(); applyBackground(); rerender(); } });

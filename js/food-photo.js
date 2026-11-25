@@ -12,13 +12,14 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['foodId', 'name', 'amount', 'unit', 'kcal'],
+        required: ['foodId', 'name', 'amount', 'unit', 'kcal', 'groups'],
         properties: {
           foodId: { anyOf: [{ type: 'string' }, { type: 'null' }], description: '등록된 음식과 같으면 그 id, 아니면 null' },
           name: { type: 'string' },
           amount: { type: 'number', description: '사진 속 양 (unit 기준)' },
           unit: { type: 'string' },
           kcal: { type: 'number', description: '사진 속 양 전체의 kcal' },
+          groups: { type: 'array', items: { type: 'string', enum: ['carb', 'protein', 'fiber'] }, description: '주요 영양 분류' },
         },
       },
     },
@@ -33,6 +34,7 @@ function prompt(foods) {
 - 아래는 이 사람이 자주 먹는 음식 목록입니다. 사진 속 음식이 이 중 하나와 같으면 foodId 에 그 id 를 넣고, unit 은 목록과 같은 단위로, kcal 는 목록의 kcal 를 양에 비례해 계산하세요. 목록에 없으면 foodId 는 null.
 ${lib || '(등록된 음식 없음)'}
 - 소스·드레싱·기름처럼 칼로리에 영향이 큰 것이 보이면 따로 항목으로 넣으세요.
+- groups: 그 음식이 끼니에서 맡는 주요 역할. carb(탄수화물: 밥·빵·면·감자·과일), protein(단백질: 고기·생선·계란·두부·콩·유제품), fiber(섬유질: 채소·나물·김치·해조류·과일). 여러 개 가능.
 - 음식 사진이 아니면 items 를 빈 배열로 두고 note 에 이유를 쓰세요.`;
 }
 
@@ -47,13 +49,14 @@ function textPrompt(text, foods) {
 - 칼로리는 식약처 식품영양성분 DB 같은 한국 일반 기준에 맞춰 현실적으로 계산하세요. 볶음·전·튀김은 기름을 포함해서요.
 - 아래 자주 먹는 음식 목록과 같은 음식이면 foodId 에 그 id 를 넣고, unit 은 목록과 같은 단위로, kcal 는 목록의 kcal 를 양에 비례해 계산하세요. 아니면 foodId 는 null.
 ${lib || '(등록된 음식 없음)'}
+- groups: carb(탄수화물: 밥·빵·면·감자·과일), protein(단백질: 고기·생선·계란·두부·콩·유제품), fiber(섬유질: 채소·나물·김치·해조류·과일) 중 해당하는 것들.
 - note 에는 기준(예: "반찬 1회 제공량 기준")을 짧게 적으세요. 음식이 아니면 items 를 빈 배열로 두세요.`;
 }
 
 const JSON_FORMAT = `
 
 반드시 JSON 하나만 답하세요. 형식:
-{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자}]}`;
+{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자, "groups": ["carb"|"protein"|"fiber"]}]}`;
 
 export async function analyzeFoodPhoto({ sample, apiKey, jpegs, foods }) {
   const items = [], notes = [];
@@ -85,6 +88,7 @@ function tidy(out, foods) {
       amount: +it.amount > 0 ? +it.amount : 1,
       unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim().slice(0, 12) : '인분',
       kcal: Math.max(0, Math.round(+it.kcal)),
+      groups: Array.isArray(it.groups) ? it.groups.filter((g) => ['carb', 'protein', 'fiber'].includes(g)) : [],
     }));
   return { items, note: typeof out?.note === 'string' ? out.note : '' };
 }
