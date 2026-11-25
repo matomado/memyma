@@ -22,7 +22,7 @@ import {
 
 /* ================= 공통 유틸 ================= */
 const $view = document.getElementById('view');
-const ui = { date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
+const ui = { open: {}, date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, d = 1) => (v == null || v === '' ? '-' : (+v).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'));
@@ -93,6 +93,30 @@ const TYPE = {
   etc: { label: '기타', icon: '✨' },
   pt: { label: 'PT', icon: '🧑‍🏫' },
 };
+
+/** 카드를 접을 수 있게: 제목 + 한 줄 요약만 보이고 누르면 펼침 (열림 상태는 기억) */
+function foldify(card, key, sub) {
+  const d = document.createElement('details');
+  d.className = card.className + ' fold';
+  d.open = !!ui.open[key];
+  const h2 = card.querySelector(':scope > h2');
+  const sm = document.createElement('summary');
+  sm.className = 'fold-head';
+  const left = document.createElement('div');
+  left.className = 'grow';
+  left.appendChild(h2);
+  if (sub) left.appendChild(h(`<div class="fold-sub">${sub}</div>`));
+  sm.append(left, h(`<span class="chev" aria-hidden="true">›</span>`));
+  const body = document.createElement('div');
+  body.className = 'fold-body';
+  while (card.firstChild) body.appendChild(card.firstChild);
+  d.append(sm, body);
+  d.addEventListener('toggle', () => {
+    ui.open[key] = d.open;
+    if (d.open) d.querySelectorAll('.chart-scroll').forEach((x) => (x.scrollLeft = x.scrollWidth));
+  });
+  return d;
+}
 
 /* ================= 배경 ================= */
 function applyBackground() {
@@ -649,7 +673,7 @@ function renderWorkout() {
 
 function renderWorkoutAnalysis() {
   const weeks = weeklyStats(ui.woRange);
-  const card = h(`<div class="card analysis"><h2>운동 분석 <span class="pills">${[[4, '4주'], [12, '12주']].map(([v, l]) => `<button class="pill ${ui.woRange === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</span></h2></div>`);
+  const card = h(`<div class="card analysis"><h2>📊 운동 분석</h2><div class="pills" style="margin-bottom:10px">${[[4, '최근 4주'], [12, '최근 12주']].map(([v, l]) => `<button class="pill ${ui.woRange === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</div></div>`);
   card.querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => { ui.woRange = +b.dataset.v; rerender(); }));
   comments(weeks).forEach((p) => card.appendChild(h(`<div class="pt"><span class="dot" style="background:${p.color}"></span><div>${p.html}</div></div>`)));
 
@@ -675,7 +699,8 @@ function renderWorkoutAnalysis() {
     card.appendChild(h(`<h3 style="margin-top:14px">운동 평균 심박수 <small class="muted">(bpm)</small></h3>`));
     card.appendChild(lineChart(hrs.slice(-10).map((w) => ({ x: fmtShort(w.date), value: w.avgHr, tip: `${w.date.slice(2).replace(/-/g, '.')} ${TYPE[w.type].label}` })), { unit: 'bpm', decimals: 0, colorFor: () => '#f0506e' }));
   }
-  $view.appendChild(card);
+  const avgMin = Math.round(weeks.slice(0, -1).reduce((a, w) => a + w.minutes, 0) / Math.max(1, weeks.length - 1));
+  $view.appendChild(foldify(card, 'wo-analysis', `주 평균 ${avgMin}분 · 권장 150분 · 주별 그래프`));
 
   // Claude 코치
   const coach = h(`<div class="card"><h2>🤖 Claude 코치</h2>
@@ -710,7 +735,7 @@ function renderWorkoutAnalysis() {
     btn.disabled = false;
     btn.textContent = '다시 분석 받기';
   };
-  $view.appendChild(coach);
+  $view.appendChild(foldify(coach, 'wo-coach', ui.coach ? '최근 분석이 있어요 · 눌러서 보기' : '4주 기록을 보고 조언받기'));
 }
 
 const curPlan = () => (db.plan && db.plan.week === weekStart(today()) ? db.plan : null);
@@ -1426,6 +1451,7 @@ function dayDetail(d) {
 
 /* ================= 설정 ================= */
 function renderSettings() {
+  const sec = { goal: [], workout: [], app: [] };
   const s = db.settings;
   const bg = getBg();
   const card = h(`<div class="card"><h2>배경 사진</h2>
@@ -1459,7 +1485,7 @@ function renderSettings() {
   card.querySelectorAll('.mode button').forEach((b) => { b.classList.toggle('on', b.dataset.v === s.bgMode); b.onclick = () => { s.bgMode = b.dataset.v; save(); applyBackground(); rerender(); }; });
   const rng = card.querySelector('input[type=range]');
   if (rng) rng.oninput = () => { s.cardAlpha = +rng.value; save(); applyBackground(); rng.previousElementSibling.textContent = `카드 불투명도 (${Math.round(s.cardAlpha * 100)}%)`; };
-  $view.appendChild(card);
+  sec.app.push(foldify(card, 's-bg', bg ? ({ none: '사진만 저장 · 표시 안 함', header: '상단에만 표시', full: '전체 배경' })[s.bgMode] || '' : '사진 없음'));
 
   const kgNow = latestWeight();
   const gc = h(`<div class="card"><h2>목표 칼로리 계산</h2>
@@ -1471,16 +1497,16 @@ function renderSettings() {
   gc.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { s.goal = b.dataset.g; syncKcalTarget(); save(); rerender(); }));
   gc.querySelector('.auto').onchange = (e) => { s.autoKcal = e.target.checked; syncKcalTarget(); save(); rerender(); toast(s.autoKcal ? `목표를 ${kc(s.kcalTarget)}kcal로 맞췄어요` : '자동 맞추기를 껐어요'); };
   gc.querySelector('.apply').onclick = () => { s.kcalTarget = goalKcal(kgNow); save(); rerender(); toast(`하루 목표를 ${kc(s.kcalTarget)}kcal로 정했어요`); };
-  $view.appendChild(gc);
+  sec.goal.push(foldify(gc, 's-kcal', `${GOAL[s.goal || 'diet'][0]} · 하루 ${kc(s.kcalTarget)}kcal${s.autoKcal ? ' · 체중 따라 자동' : ''}`));
 
   const gym = h(`<div class="card"><h2>우리 헬스장 기구</h2>
     <p class="small muted" style="margin-top:0">등록하면 루틴 추천과 '무분할 루틴 불러오기'가 있는 기구로 할 수 있는 종목만 골라요. 아무것도 안 고르면 일반 헬스장 기준이에요.</p></div>`);
   gym.appendChild(equipSection(rerender));
-  $view.appendChild(gym);
-  $view.appendChild(routineCard());
-  $view.appendChild(ptCard());
+  sec.workout.push(foldify(gym, 's-gym', (s.equipment || []).length ? `${s.equipment.length}개 등록` : '등록 안 함 (일반 헬스장 기준)'));
+  sec.workout.push(foldify(routineCard(), 's-routine', myRoutine(s).map((x) => x.name).join(' · ')));
+  { const pst = ptStatus(); sec.workout.push(foldify(ptCard(), 's-pt', pst ? pst.remainText.replace(/<[^>]+>/g, '') + (pst.next ? ` · 다음 ${pst.next}` : '') : '등록 안 함')); }
 
-  const goal = h(`<div class="card"><h2>내 정보 · 목표</h2>
+  const goal = h(`<div class="card"><h2>내 정보</h2>
     <div class="grid2">
       <label class="field"><span>하루 섭취 목표 (kcal)</span><input type="number" inputmode="numeric" data-k="kcalTarget" value="${s.kcalTarget}"></label>
       <label class="field"><span>목표 체중 (kg)</span><input type="number" inputmode="decimal" data-k="goalWeight" value="${s.goalWeight ?? ''}"></label>
@@ -1493,16 +1519,16 @@ function renderSettings() {
     if (k === 'kcalTarget' && !s[k]) s[k] = 1500;
     save(); toast('저장했어요');
   }));
-  $view.appendChild(goal);
+  sec.goal.push(foldify(goal, 's-me', `${s.sex === 'male' ? '남성' : '여성'} · 키 ${s.height ? s.height + 'cm' : '-'} · 목표 체중 ${s.goalWeight ? s.goalWeight + 'kg' : '-'}`));
 
-  const ai = h(`<div class="card"><h2>인바디 캡처 자동 분석</h2>
+  const ai = h(`<div class="card"><h2>Claude 연결</h2>
     ${isCloud() ? '<p class="small good" style="margin-top:0"><b>claude.ai에서 열려 있어서 API 키 없이 Claude가 캡처를 읽어요.</b> 아래 키는 다른 곳(GitHub Pages 등)에서 열 때만 필요해요.</p>' : ''}
     <p class="small" style="margin-top:0">Claude API 키를 넣으면 캡처를 Claude가 읽어서 정확하게 입력해요. '변화' 그래프 화면처럼 여러 날짜가 있는 캡처도 한 번에 가져와요.
     키가 없으면 무료 문자 인식(OCR)을 쓰는데, 정확도가 낮아서 확인이 더 필요해요.</p>
     <label class="field"><span>Claude API 키 (console.anthropic.com 에서 발급)</span><input type="password" value="${esc(s.apiKey)}" placeholder="sk-ant-..." autocomplete="off"></label>
     <p class="small muted">키는 이 기기 브라우저에만 저장되고, 분석할 때 Anthropic API로만 전송돼요. 캡처 1장 분석에 몇십 원 수준의 API 비용이 들어요.</p></div>`);
   ai.querySelector('input').onchange = (e) => { s.apiKey = e.target.value.trim(); save(); toast(s.apiKey ? 'API 키를 저장했어요' : 'API 키를 지웠어요'); };
-  $view.appendChild(ai);
+  sec.app.push(foldify(ai, 's-ai', isCloud() ? 'claude.ai 연결됨 · 키 없이 사용 중' : s.apiKey ? 'API 키 저장됨' : 'API 키 없음 (문자 인식만)'));
 
   const data = h(`<div class="card"><h2>데이터</h2>
     <p class="small muted" style="margin-top:0">${isCloud() ? '기록은 내 claude.ai 계정에 저장돼서 폰·PC 어디서 열어도 같아요. 나만 볼 수 있어요.' : '기록은 이 기기 브라우저에 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.'}</p>
@@ -1542,7 +1568,11 @@ function renderSettings() {
     db.meals = {}; db.workouts = []; db.inbody = [];
     save(); rerender(); toast('기록을 삭제했어요');
   };
-  $view.appendChild(data);
+  sec.app.push(foldify(data, 's-data', '백업 저장 · 불러오기 · 전체 삭제'));
+  for (const [k, title] of [['goal', '🎯 목표 · 내 정보'], ['workout', '🏋️ 운동'], ['app', '⚙️ 앱']]) {
+    $view.appendChild(h(`<div class="sec-title">${title}</div>`));
+    sec[k].forEach((c) => $view.appendChild(c));
+  }
 }
 
 /* ================= 시작 ================= */

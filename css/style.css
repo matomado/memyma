@@ -311,3 +311,13 @@ textarea { padding: 10px 12px; }
 .btn { white-space: nowrap; flex-shrink: 0; }
 .btn.block, .grid2 > .btn, .grid3 > .btn { white-space: normal; }
 .today-plan > span { min-width: 0; flex: 1; }
+/* ---------- 접는 카드 ---------- */
+details.fold > summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary h2 { margin-bottom: 0; }
+.fold-sub { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.chev { flex: none; font-size: 22px; color: #b5bac1; transform: rotate(90deg); transition: transform .15s; line-height: 1; }
+details.fold[open] > summary .chev { transform: rotate(-90deg); }
+.fold-body { margin-top: 14px; }
+.sec-title { font-size: 13px; font-weight: 800; color: #6b7280; margin: 18px 4px 8px; }
+.sec-title:first-child { margin-top: 4px; }
