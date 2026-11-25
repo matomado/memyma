@@ -8,7 +8,7 @@ import {
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
 import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
-import { EQUIPMENT, ALL_EQUIP, MY_GYM, gymRoutine, identifyEquipment } from './gym.js';
+import { EQUIPMENT, ALL_EQUIP, MY_GYM, identifyEquipment, myRoutine, machineRoutine, freeRoutine, optionsFor } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
@@ -700,6 +700,35 @@ const curPlan = () => (db.plan && db.plan.week === weekStart(today()) ? db.plan 
 const PLAN_ICON = { weight: '🏋️', swim: '🏊', cardio: '🏃', etc: '✨', rest: '😴' };
 const planDone = (d) => d.type !== 'rest' && workoutsOf(d.date).some((w) => w.type === d.type || (d.type === 'etc'));
 
+/** 내 무분할 루틴 고치기 */
+function routineCard() {
+  const s = db.settings;
+  const equip = s.equipment || [];
+  const cur = myRoutine(s);
+  const card = h(`<div class="card"><h2>내 무분할 루틴</h2>
+    <p class="small muted" style="margin-top:0">부위마다 한 종목씩, 하루에 모두 해요. 웨이트 기록의 '내 무분할 루틴 불러오기'와 루틴 추천에 이 종목이 쓰여요.${equip.length ? '' : ' 헬스장 기구를 등록하면 할 수 있는 종목만 보여요.'}</p>
+    <div class="grid2" style="margin-bottom:12px"><button class="btn sm mach">🏋️ 머신 위주로</button><button class="btn sm free">🏋️‍♀️ 프리웨이트 기본</button></div>
+    <div class="rt"></div></div>`);
+  const rt = card.querySelector('.rt');
+  ROUTINE.forEach((r, i) => {
+    const opts = optionsFor(r, equip);
+    const val = cur.find((x) => x.part === r.part)?.name || opts[0] || r.name;
+    if (!opts.includes(val)) opts.unshift(val);
+    const row = h(`<label class="rt-row"><span>${r.part}</span><select>${opts.map((o) => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`);
+    row.querySelector('select').onchange = (e) => {
+      const next = ROUTINE.map((x) => ({ part: x.part, name: cur.find((c) => c.part === x.part)?.name || x.name }));
+      next[i].name = e.target.value;
+      s.myRoutine = next;
+      save(); toast(`${r.part}: ${e.target.value}로 바꿨어요`);
+      cur.splice(0, cur.length, ...next);
+    };
+    rt.appendChild(row);
+  });
+  card.querySelector('.mach').onclick = () => { s.myRoutine = machineRoutine(equip); save(); rerender(); toast('머신 위주로 바꿨어요'); };
+  card.querySelector('.free').onclick = () => { s.myRoutine = freeRoutine(equip); save(); rerender(); toast('프리웨이트 기본으로 바꿨어요'); };
+  return card;
+}
+
 /** 헬스장 기구 고르기 (설정·루틴 추천에서 같이 씀) */
 function equipSection(onChange) {
   const box = h(`<div class="equip"></div>`);
@@ -968,7 +997,7 @@ function workoutForm(existing, type, preset = {}) {
     } else if (w.type === 'weight') {
       typed.appendChild(h(`<div class="field"><span>부위</span></div>`)).appendChild(pills(PARTS, w.parts, true, (x) => toggle(w.parts, x)));
       const box = h(`<div class="field"><span>종목</span>
-        <button type="button" class="btn sm block tpl" style="margin:6px 0">📋 무분할 루틴 불러오기 (6종목)</button>
+        <button type="button" class="btn sm block tpl" style="margin:6px 0">📋 내 무분할 루틴 불러오기</button>
         <div class="set-head"><span>운동</span><span>kg</span><span>세트별 회수</span><span>세트</span><span></span></div><div class="sets"></div>
         <p class="help" style="margin-top:0">세트별 회수는 쉼표나 점으로 이어서 적어요. 예: 10,9,9,8,6</p>
         <datalist id="lifts">${[...new Set([...ROUTINE_NAMES, ...LIFTS])].map((l) => `<option>${l}</option>`).join('')}</datalist>
@@ -996,12 +1025,11 @@ function workoutForm(existing, type, preset = {}) {
       box.querySelector('.add').onclick = () => { const l = w.sets[w.sets.length - 1]; w.sets.push({ name: '', kg: l?.kg || '', reps: '', sets: l?.sets || '' }); drawTyped(); };
       box.querySelector('.tpl').onclick = () => {
         w.sets = w.sets.filter((x) => x.name.trim());
-        const picks = gymRoutine(db.settings.equipment).filter((g) => !g.missing);
+        const picks = myRoutine(db.settings);
         for (const g of picks) if (!w.sets.some((x) => x.name.replace(/\s/g, '') === g.name.replace(/\s/g, ''))) w.sets.push({ name: g.name, kg: lastKg(g.name), reps: '', sets: 5 });
         for (const p of ['등', '가슴', '하체', '어깨', '팔']) if (!w.parts.includes(p)) w.parts.push(p);
         drawTyped();
-        const sw = picks.filter((g) => g.swapped).map((g) => g.name);
-        toast(sw.length ? `헬스장 기구에 맞춰 불러왔어요 (${sw.join(', ')}로 대체)` : `${picks.length}종목을 불러왔어요. 각 5세트, 6회부터 시작해요`);
+        toast(`내 무분할 루틴 ${picks.length}종목을 불러왔어요 (설정에서 바꿀 수 있어요)`);
       };
       typed.appendChild(box);
     } else {
@@ -1328,8 +1356,9 @@ function renderSettings() {
 
   const gym = h(`<div class="card"><h2>우리 헬스장 기구</h2>
     <p class="small muted" style="margin-top:0">등록하면 루틴 추천과 '무분할 루틴 불러오기'가 있는 기구로 할 수 있는 종목만 골라요. 아무것도 안 고르면 일반 헬스장 기준이에요.</p></div>`);
-  gym.appendChild(equipSection());
+  gym.appendChild(equipSection(rerender));
   $view.appendChild(gym);
+  $view.appendChild(routineCard());
 
   const goal = h(`<div class="card"><h2>내 정보 · 목표</h2>
     <div class="grid2">

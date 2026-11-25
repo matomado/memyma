@@ -28,7 +28,13 @@ const NEEDS = {
   '스쿼트': [['파워랙(스쿼트 랙)', '바벨'], ['스미스 머신']],
   '브이스쿼트': [['브이스쿼트 머신'], ['핵스쿼트 머신']],
   '프론트 스쿼트': [['파워랙(스쿼트 랙)', '바벨']],
-  '레그프레스': [['레그프레스'], ['시티드 레그프레스']],
+  '레그프레스': [['레그프레스']],
+  '시티드 레그프레스': [['시티드 레그프레스']],
+  '스미스 스쿼트': [['스미스 머신']],
+  '스미스 인클라인 벤치프레스': [['스미스 머신', '인클라인 벤치']],
+  '스미스 숄더프레스': [['스미스 머신']],
+  '케이블 컬': [['케이블 머신']],
+  '어시스트 풀업': [['어시스트 친업·딥스 머신']],
   '런지': [['덤벨'], []],
   '밀리터리프레스': [['바벨'], ['스미스 머신']],
   '덤벨 숄더프레스': [['덤벨']],
@@ -56,6 +62,31 @@ export function gymRoutine(equip) {
     const pick = [r.name, ...r.alts].find((n) => canDo(n, equip));
     return { name: pick || r.name, main: r.name, part: r.part, swapped: !!pick && pick !== r.name, missing: !pick };
   });
+}
+
+// 머신 위주 우선순위 (부위별, 앞에서부터 있는 기구로 고름)
+const MACHINE_FIRST = {
+  '등': ['풀다운', '케이블 로우', '어시스트 풀업', '원암 덤벨로우'],
+  '가슴': ['체스트 프레스', '스미스 인클라인 벤치프레스', '덤벨 벤치프레스', '인클라인 벤치프레스'],
+  '하체': ['레그프레스', '시티드 레그프레스', '스미스 스쿼트', '브이스쿼트', '스쿼트'],
+  '어깨': ['숄더프레스 머신', '스미스 숄더프레스', '덤벨 숄더프레스', '밀리터리프레스'],
+  '이두': ['케이블 컬', '덤벨 컬', '바벨컬'],
+  '삼두': ['케이블 푸시다운', '덤벨 트라이셉 익스텐션', '스컬크러셔'],
+};
+/** 부위별로 할 수 있는 종목 목록 */
+export const optionsFor = (r, equip) => [r.name, ...r.alts].filter((n) => canDo(n, equip));
+/** 기본(프리웨이트) 구성 */
+export const freeRoutine = (equip) => gymRoutine(equip).map((g) => ({ part: g.part, name: g.name }));
+/** 머신 위주 구성 */
+export function machineRoutine(equip) {
+  return ROUTINE.map((r) => ({ part: r.part, name: MACHINE_FIRST[r.part].find((n) => canDo(n, equip)) || optionsFor(r, equip)[0] || r.name }));
+}
+/** 지금 쓰는 내 무분할 루틴: 직접 정한 것 > (기구 등록했으면) 머신 위주 > 기본 */
+export function myRoutine(settings) {
+  const equip = settings.equipment || [];
+  const saved = settings.myRoutine;
+  if (Array.isArray(saved) && saved.length) return saved.filter((x) => x && x.name);
+  return hasGym(equip) ? machineRoutine(equip) : freeRoutine(equip);
 }
 
 /** 있는 기구로 할 수 있는 유산소 */

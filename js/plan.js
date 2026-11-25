@@ -4,7 +4,7 @@ const equip = () => db.settings.equipment || [];
 import { claudeImageJSON } from './inbody.js';
 import { recordSummary } from './workout-analysis.js';
 import { ROUTINE, lastKg } from './routine.js';
-import { gymRoutine, cardioKinds } from './gym.js';
+import { myRoutine, cardioKinds } from './gym.js';
 
 export const DOWS = ['월', '화', '수', '목', '금', '토', '일'];
 export const KINDS = ['러닝', '걷기', '실내자전거', '천국의계단', '일립티컬', '줄넘기', '등산', '기타'];
@@ -55,7 +55,7 @@ function prompt(prefs) {
 
 [따를 원칙]
 • 웨이트는 무분할: 등·가슴·하체·어깨·이두·삼두를 하루에 한 종목씩 모두, 각 5세트(시간이 부족하면 3~4세트). 근육 회복을 위해 웨이트 날 사이에 하루 이상 쉬게(주 2~3회).
-• 기본 종목: 풀다운, 인클라인 벤치프레스, 스쿼트, 밀리터리프레스, 바벨컬, 스컬크러셔. 헬스장에 기구가 없으면 대체 종목으로: ${gymRoutine(s.equipment).map((g) => `${g.part}=${g.missing ? '(가능한 종목 없음: 맨몸이나 덤벨로 대체 제안)' : g.name}`).join(', ')}.
+• 이 사람의 무분할 종목(이대로 쓰세요): ${myRoutine(s).map((g) => `${g.part}=${g.name}`).join(', ')}.
 • 등록된 기구가 있으면 그 기구로 할 수 있는 종목만 넣으세요. 유산소 kind 는 다음 중에서: ${cardioKinds(s.equipment).join(', ')}.
 • 다이어트 중에는 무게 욕심 없이 지금 무게 유지가 목표. 반복수를 조금씩 늘린다.
 • 살 빼기는 식단이 핵심이라 운동을 과하게 늘리지 않는다. 꾸준히 할 수 있는 양으로.
@@ -131,7 +131,7 @@ export function templatePlan(prefs) {
   let k = 0;
   const days = DOWS.map((dow) => {
     if (!avail.includes(dow)) return { dow, type: 'rest' };
-    if (weightDays.includes(dow)) return { dow, type: 'weight', title: '무분할 웨이트', duration: prefs.minutes, items: gymRoutine(equip()).filter((g) => !g.missing).map((g) => ({ name: g.name, detail: `${sets}세트 · ${lastKg(g.name) ? lastKg(g.name) + 'kg 유지, 반복수 +1~2' : '가벼운 무게로 6회부터'}${g.swapped ? ` (${g.main} 대신)` : ''}` })) };
+    if (weightDays.includes(dow)) return { dow, type: 'weight', title: '무분할 웨이트', duration: prefs.minutes, items: myRoutine(db.settings).map((g) => ({ name: g.name, detail: `${sets}세트 · ${lastKg(g.name) ? lastKg(g.name) + 'kg 유지, 반복수 +1~2' : '가벼운 무게로 6회부터'}` })) };
     if (!others.length) return { dow, type: 'rest' };
     const a = others[k++ % others.length];
     if (a === 'swim') return { dow, type: 'swim', title: '수영', duration: prefs.minutes, distance: Math.round(prefs.minutes * 20 / 50) * 50, items: [{ name: '워밍업', detail: '자유형·배영 천천히 200m' }, { name: '본운동', detail: '자유형 50m × 반복, 30초 휴식' }, { name: '마무리', detail: '킥판 100m + 천천히 100m' }] };
