@@ -96,7 +96,7 @@ const PROMPT = (t) => `이 이미지는 InBody(인바디) 앱 화면 캡처 또�
 - '변화' 탭처럼 여러 날짜의 그래프가 있으면, 날짜마다 하나씩 measurements 항목을 만들고 그래프 점 위에 적힌 숫자를 해당 날짜에 넣으세요.
 - 한 번의 측정 결과 화면이면 measurements 에 하나만 넣으세요.
 - 항목: weight=체중(kg), smm=골격근량(kg), bfm=체지방량(kg), pbf=체지방률(%), bmi=BMI, whr=복부지방률(허리엉덩이둘레비), vfl=내장지방레벨, bmr=기초대사량(kcal), tbw=체수분(L), protein=단백질(kg), mineral=무기질(kg), score=인바디점수.
-- 화면에 없는 항목은 null. 추측해서 계산하지 말고 보이는 숫자만 넣으세요.
+- 화면에 숫자로 직접 적혀 있지 않은 항목은 반드시 null. 다른 값으로 계산하거나(예: 체중×체지방률) 추측하지 마세요.
 - 측정 시각이 보이면 time 에 HH:MM, 없으면 null.`;
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';

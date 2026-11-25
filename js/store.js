@@ -131,8 +131,10 @@ export async function initCloud() {
     const meals = {}, workouts = [];
     let meta = null, inbody = [];
     for (const d of snap.docs) {
-      const body = d.data();
-      lastSent[d.id] = JSON.stringify(body);
+      // claude.ai 가 주는 데이터는 수정 불가(frozen) 상태라 복사해서 사용
+      const json = JSON.stringify(d.data() || {});
+      const body = JSON.parse(json);
+      lastSent[d.id] = json;
       if (d.id === 'meta') meta = body;
       else if (d.id === 'inbody') inbody = body.records || [];
       else if (d.id.startsWith('meals-')) Object.assign(meals, body.days || {});
