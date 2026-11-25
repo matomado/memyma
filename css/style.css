@@ -297,3 +297,8 @@ textarea { padding: 10px 12px; }
 .plan-day > .btn { margin-left: 48px !important; }
 .chip.today-chip { background: var(--accent); color: #fff; }
 .today-plan { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; }
+.eq-box { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.eq-box summary { cursor: pointer; font-size: 14px; list-style: none; }
+.eq-box summary::-webkit-details-marker { display: none; }
+.eq-box[open] summary { margin-bottom: 10px; }
+.equip .pill { font-size: 13px; padding: 6px 11px; }

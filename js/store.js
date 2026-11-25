@@ -50,6 +50,7 @@ function defaults() {
       bgUrl: '',
       goal: 'diet',     // diet | maintain | bulk (체중 × 25 / 30 / 35)
       autoKcal: false,  // 체중이 바뀌면 목표 kcal 자동 조정
+      equipment: [],    // 우리 헬스장 기구
     },
     foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false, groups: DEFAULT_GROUPS[name] || [] })),
     meals: {},     // { 'YYYY-MM-DD': { breakfast: [...], lunch: [...], dinner: [...], snack: [...] } }

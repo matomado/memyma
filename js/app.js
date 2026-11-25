@@ -8,6 +8,7 @@ import {
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
 import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
+import { EQUIPMENT, ALL_EQUIP, gymRoutine, identifyEquipment } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
@@ -699,6 +700,63 @@ const curPlan = () => (db.plan && db.plan.week === weekStart(today()) ? db.plan 
 const PLAN_ICON = { weight: '🏋️', swim: '🏊', cardio: '🏃', etc: '✨', rest: '😴' };
 const planDone = (d) => d.type !== 'rest' && workoutsOf(d.date).some((w) => w.type === d.type || (d.type === 'etc'));
 
+/** 헬스장 기구 고르기 (설정·루틴 추천에서 같이 씀) */
+function equipSection(onChange) {
+  const box = h(`<div class="equip"></div>`);
+  const list = () => (db.settings.equipment ||= []);
+  const changed = () => { save(); draw(); onChange?.(); };
+  function draw() {
+    box.innerHTML = '';
+    for (const [group, items] of EQUIPMENT) {
+      const row = h(`<div class="field" style="margin-bottom:10px"><span>${group}</span><div class="pills" style="flex-wrap:wrap"></div></div>`);
+      const pills = row.querySelector('.pills');
+      for (const it of items) {
+        const b = h(`<button type="button" class="pill ${list().includes(it) ? 'on' : ''}">${esc(it)}</button>`);
+        b.onclick = () => { const l = list(); const i = l.indexOf(it); i >= 0 ? l.splice(i, 1) : l.push(it); changed(); };
+        pills.appendChild(b);
+      }
+      box.appendChild(row);
+    }
+    const others = list().filter((x) => !ALL_EQUIP.includes(x));
+    const extra = h(`<div class="field" style="margin-bottom:10px"><span>직접 추가한 기구</span><div class="pills" style="flex-wrap:wrap"></div>
+      <div class="row" style="margin-top:8px"><input type="text" class="grow eqin" placeholder="예: 어시스트 풀업 머신"><button type="button" class="btn sm">추가</button></div></div>`);
+    others.forEach((x) => {
+      const b = h(`<button type="button" class="pill on">${esc(x)} ✕</button>`);
+      b.onclick = () => { db.settings.equipment = list().filter((y) => y !== x); changed(); };
+      extra.querySelector('.pills').appendChild(b);
+    });
+    const addOne = () => { const v = extra.querySelector('.eqin').value.trim(); if (v && !list().includes(v)) { list().push(v.slice(0, 20)); changed(); } };
+    extra.querySelector('.btn').onclick = addOne;
+    extra.querySelector('.eqin').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addOne(); } };
+    box.appendChild(extra);
+    const photo = h(`<label class="btn block">📷 헬스장 사진으로 기구 찾기 (여러 장 가능)<input type="file" accept="image/*" multiple hidden></label>`);
+    const msg = h(`<div class="small" style="margin-top:6px"></div>`);
+    photo.querySelector('input').onchange = async (e) => {
+      const jpegs = await readImages(e.target.files);
+      e.target.value = '';
+      if (!jpegs.length) return;
+      const sample = await sampleImageReady();
+      const apiKey = db.settings.apiKey;
+      if (!sample && !apiKey) { msg.textContent = 'Claude를 쓸 수 있을 때만 사진으로 찾을 수 있어요. 목록에서 골라 주세요.'; return; }
+      msg.innerHTML = '<span class="spinner"></span> Claude가 기구를 찾는 중…';
+      try {
+        const res = await identifyEquipment({ sample, apiKey, jpegs });
+        const l = list();
+        const added = [...res.known, ...res.other].filter((x) => !l.includes(x));
+        l.push(...added);
+        changed();
+        toast(added.length ? `기구 ${added.length}개를 추가했어요: ${added.join(', ')}` : '새로 찾은 기구가 없어요');
+      } catch (err) {
+        console.error(err);
+        msg.textContent = err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 해 주세요.' : '기구를 찾지 못했어요. 목록에서 골라 주세요.';
+      }
+    };
+    box.append(photo, msg);
+  }
+  draw();
+  return box;
+}
+
 function planCard() {
   const plan = curPlan();
   const card = h(`<div class="card"><h2>이번 주 추천 루틴 ${plan ? '<button class="btn sm ghost re">다시 받기</button>' : ''}</h2></div>`);
@@ -741,10 +799,14 @@ async function planPrefsSheet() {
     <div class="field"><span>운동할 수 있는 요일</span><div class="pills dows" style="flex-wrap:wrap">${DOWS.map((d) => `<button type="button" class="pill ${prefs.days.includes(d) ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div></div>
     <div class="field"><span>1회 운동 시간</span><div class="seg mins">${[30, 45, 60, 90].map((m) => `<button type="button" data-m="${m}" class="${prefs.minutes === m ? 'on' : ''}">${m}분</button>`).join('')}</div></div>
     <div class="field"><span>넣을 운동</span><div class="pills acts" style="flex-wrap:wrap">${ACTS.map(([k, l]) => `<button type="button" class="pill ${prefs.acts.includes(k) ? 'on' : ''}" data-a="${k}">${l}</button>`).join('')}</div></div>
+    <details class="field eq-box"><summary class="eq-sum"></summary><div class="eq"></div></details>
     <label class="field"><span>요청사항 (선택)</span><input type="text" class="note" placeholder="예: 무릎이 안 좋아요, 수영은 주 2회만" value="${esc(prefs.note)}"></label>
     <div class="out"></div>
     <button class="btn primary block go">추천 받기</button></div>`);
   const close = sheet('📅 루틴 추천 조건', body);
+  const eqSum = () => { const n = (db.settings.equipment || []).length; body.querySelector('.eq-sum').innerHTML = `🏋️ 헬스장 기구 <b>${n ? n + '개 등록됨' : '등록 안 함'}</b> <span class="small muted">· 눌러서 ${n ? '수정' : '등록'}</span>`; };
+  eqSum();
+  body.querySelector('.eq').appendChild(equipSection(eqSum));
   const tog = (arr, x) => { const i = arr.indexOf(x); i >= 0 ? arr.splice(i, 1) : arr.push(x); };
   body.querySelectorAll('[data-d]').forEach((b) => (b.onclick = () => { tog(prefs.days, b.dataset.d); b.classList.toggle('on'); }));
   body.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => { tog(prefs.acts, b.dataset.a); b.classList.toggle('on'); }));
@@ -928,10 +990,12 @@ function workoutForm(existing, type, preset = {}) {
       box.querySelector('.add').onclick = () => { const l = w.sets[w.sets.length - 1]; w.sets.push({ name: '', kg: l?.kg || '', reps: '', sets: l?.sets || '' }); drawTyped(); };
       box.querySelector('.tpl').onclick = () => {
         w.sets = w.sets.filter((x) => x.name.trim());
-        for (const r of ROUTINE) if (!w.sets.some((x) => x.name.replace(/\s/g, '') === r.name.replace(/\s/g, ''))) w.sets.push({ name: r.name, kg: lastKg(r.name), reps: '', sets: 5 });
+        const picks = gymRoutine(db.settings.equipment).filter((g) => !g.missing);
+        for (const g of picks) if (!w.sets.some((x) => x.name.replace(/\s/g, '') === g.name.replace(/\s/g, ''))) w.sets.push({ name: g.name, kg: lastKg(g.name), reps: '', sets: 5 });
         for (const p of ['등', '가슴', '하체', '어깨', '팔']) if (!w.parts.includes(p)) w.parts.push(p);
         drawTyped();
-        toast('6종목을 불러왔어요. 각 5세트, 6회부터 시작해요');
+        const sw = picks.filter((g) => g.swapped).map((g) => g.name);
+        toast(sw.length ? `헬스장 기구에 맞춰 불러왔어요 (${sw.join(', ')}로 대체)` : `${picks.length}종목을 불러왔어요. 각 5세트, 6회부터 시작해요`);
       };
       typed.appendChild(box);
     } else {
@@ -1255,6 +1319,11 @@ function renderSettings() {
   gc.querySelector('.auto').onchange = (e) => { s.autoKcal = e.target.checked; syncKcalTarget(); save(); rerender(); toast(s.autoKcal ? `목표를 ${kc(s.kcalTarget)}kcal로 맞췄어요` : '자동 맞추기를 껐어요'); };
   gc.querySelector('.apply').onclick = () => { s.kcalTarget = goalKcal(kgNow); save(); rerender(); toast(`하루 목표를 ${kc(s.kcalTarget)}kcal로 정했어요`); };
   $view.appendChild(gc);
+
+  const gym = h(`<div class="card"><h2>우리 헬스장 기구</h2>
+    <p class="small muted" style="margin-top:0">등록하면 루틴 추천과 '무분할 루틴 불러오기'가 있는 기구로 할 수 있는 종목만 골라요. 아무것도 안 고르면 일반 헬스장 기준이에요.</p></div>`);
+  gym.appendChild(equipSection());
+  $view.appendChild(gym);
 
   const goal = h(`<div class="card"><h2>내 정보 · 목표</h2>
     <div class="grid2">

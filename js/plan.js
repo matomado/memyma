@@ -1,8 +1,10 @@
 // 이번 주 운동 루틴 추천 (Claude, 없으면 기본 템플릿)
 import { db, today, addDays, weekStart, GOAL } from './store.js';
+const equip = () => db.settings.equipment || [];
 import { claudeImageJSON } from './inbody.js';
 import { recordSummary } from './workout-analysis.js';
 import { ROUTINE, lastKg } from './routine.js';
+import { gymRoutine, cardioKinds } from './gym.js';
 
 export const DOWS = ['월', '화', '수', '목', '금', '토', '일'];
 export const KINDS = ['러닝', '걷기', '실내자전거', '천국의계단', '일립티컬', '줄넘기', '등산', '기타'];
@@ -49,9 +51,12 @@ function prompt(prefs) {
 • 넣을 운동: ${prefs.acts.map((a) => ({ swim: '수영', weight: '웨이트', cardio: '유산소' }[a])).join(', ')}
 • 목적: ${(GOAL[s.goal] || GOAL.diet)[0]} / 성별 ${s.sex === 'male' ? '남성' : '여성'}
 • 요청사항: ${prefs.note || '없음'}
+• 헬스장에 있는 기구: ${(s.equipment || []).length ? s.equipment.join(', ') : '등록 안 함(일반적인 헬스장 기준)'}
 
 [따를 원칙]
-• 웨이트는 무분할: 풀다운, 인클라인 벤치프레스, 스쿼트, 밀리터리프레스, 바벨컬, 스컬크러셔를 하루에 모두, 각 5세트(시간이 부족하면 3~4세트). 근육 회복을 위해 웨이트 날 사이에 하루 이상 쉬게(주 2~3회).
+• 웨이트는 무분할: 등·가슴·하체·어깨·이두·삼두를 하루에 한 종목씩 모두, 각 5세트(시간이 부족하면 3~4세트). 근육 회복을 위해 웨이트 날 사이에 하루 이상 쉬게(주 2~3회).
+• 기본 종목: 풀다운, 인클라인 벤치프레스, 스쿼트, 밀리터리프레스, 바벨컬, 스컬크러셔. 헬스장에 기구가 없으면 대체 종목으로: ${gymRoutine(s.equipment).map((g) => `${g.part}=${g.missing ? '(가능한 종목 없음: 맨몸이나 덤벨로 대체 제안)' : g.name}`).join(', ')}.
+• 등록된 기구가 있으면 그 기구로 할 수 있는 종목만 넣으세요. 유산소 kind 는 다음 중에서: ${cardioKinds(s.equipment).join(', ')}.
 • 다이어트 중에는 무게 욕심 없이 지금 무게 유지가 목표. 반복수를 조금씩 늘린다.
 • 살 빼기는 식단이 핵심이라 운동을 과하게 늘리지 않는다. 꾸준히 할 수 있는 양으로.
 • 수영·유산소는 웨이트가 없는 날 위주로, 웨이트 날에 넣는다면 웨이트 뒤 짧게.
@@ -126,11 +131,13 @@ export function templatePlan(prefs) {
   let k = 0;
   const days = DOWS.map((dow) => {
     if (!avail.includes(dow)) return { dow, type: 'rest' };
-    if (weightDays.includes(dow)) return { dow, type: 'weight', title: '무분할 웨이트', duration: prefs.minutes, items: ROUTINE.map((r) => ({ name: r.name, detail: `${sets}세트 · ${lastKg(r.name) ? lastKg(r.name) + 'kg 유지, 반복수 +1~2' : '가벼운 무게로 6회부터'}` })) };
+    if (weightDays.includes(dow)) return { dow, type: 'weight', title: '무분할 웨이트', duration: prefs.minutes, items: gymRoutine(equip()).filter((g) => !g.missing).map((g) => ({ name: g.name, detail: `${sets}세트 · ${lastKg(g.name) ? lastKg(g.name) + 'kg 유지, 반복수 +1~2' : '가벼운 무게로 6회부터'}${g.swapped ? ` (${g.main} 대신)` : ''}` })) };
     if (!others.length) return { dow, type: 'rest' };
     const a = others[k++ % others.length];
     if (a === 'swim') return { dow, type: 'swim', title: '수영', duration: prefs.minutes, distance: Math.round(prefs.minutes * 20 / 50) * 50, items: [{ name: '워밍업', detail: '자유형·배영 천천히 200m' }, { name: '본운동', detail: '자유형 50m × 반복, 30초 휴식' }, { name: '마무리', detail: '킥판 100m + 천천히 100m' }] };
-    return { dow, type: 'cardio', title: '유산소', kind: '걷기', duration: Math.min(prefs.minutes, 45), items: [{ name: '빠르게 걷기 / 천국의계단', detail: '대화는 가능하지만 노래는 힘든 강도로' }] };
+    const kinds = cardioKinds(equip());
+    const kind = kinds.includes('천국의계단') ? '천국의계단' : '걷기';
+    return { dow, type: 'cardio', title: `유산소 · ${kind}`, kind, duration: Math.min(prefs.minutes, 45), items: [{ name: kind, detail: '대화는 가능하지만 노래는 힘든 강도로' }] };
   });
   return normalize({ days, summary: '기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아 보세요.', tips: ['웨이트는 하루 이상 쉬고 다시 해요.', '다이어트 중엔 무게 유지, 반복수만 조금씩 늘려요.'] }, 'template');
 }
