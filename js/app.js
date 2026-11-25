@@ -7,6 +7,7 @@ import {
   weightOn, weightSeries, GOAL, goalKcal, syncKcalTarget, fillFoodGroups, GROUPS,
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
+import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
@@ -162,6 +163,12 @@ function renderHome() {
 
   const ws = workoutsOf(t);
   const wcard = h(`<div class="card"><h2>오늘 운동 <a href="#workout" class="btn sm">+ 기록</a></h2></div>`);
+  const todayPlan = curPlan()?.days.find((d) => d.date === t);
+  if (todayPlan) {
+    const tp = h(`<div class="today-plan"><span>${todayPlan.type === 'rest' ? '😴 오늘은 쉬는 날이에요' : `추천: <b>${PLAN_ICON[todayPlan.type]} ${esc(todayPlan.title)}</b>${todayPlan.duration ? ` · ${todayPlan.duration}분` : ''}`}</span>${todayPlan.type !== 'rest' && !planDone(todayPlan) ? '<button class="btn sm primary">기록하기</button>' : planDone(todayPlan) ? '<span class="chip ok">✓ 완료</span>' : ''}</div>`);
+    tp.querySelector('button')?.addEventListener('click', () => workoutForm(null, todayPlan.type, presetFrom(todayPlan)));
+    wcard.appendChild(tp);
+  }
   wcard.appendChild(ws.length ? workoutList(ws, false) : h(`<div class="empty">아직 운동 기록이 없어요</div>`));
   $view.appendChild(wcard);
 
@@ -602,6 +609,8 @@ function renderWorkout() {
   card.appendChild(etc);
   $view.appendChild(card);
 
+  $view.appendChild(planCard());
+
   // 이번 주 요약
   const wk = weekStart(ui.date);
   const days = Array.from({ length: 7 }, (_, i) => addDays(wk, i));
@@ -684,6 +693,88 @@ function renderWorkoutAnalysis() {
     btn.textContent = '다시 분석 받기';
   };
   $view.appendChild(coach);
+}
+
+const curPlan = () => (db.plan && db.plan.week === weekStart(today()) ? db.plan : null);
+const PLAN_ICON = { weight: '🏋️', swim: '🏊', cardio: '🏃', etc: '✨', rest: '😴' };
+const planDone = (d) => d.type !== 'rest' && workoutsOf(d.date).some((w) => w.type === d.type || (d.type === 'etc'));
+
+function planCard() {
+  const plan = curPlan();
+  const card = h(`<div class="card"><h2>이번 주 추천 루틴 ${plan ? '<button class="btn sm ghost re">다시 받기</button>' : ''}</h2></div>`);
+  if (!plan) {
+    card.appendChild(h(`<p class="small muted" style="margin-top:0">운동할 수 있는 요일과 시간을 고르면, 최근 기록과 인바디를 보고 이번 주 요일별 루틴을 짜 드려요.${db.plan ? ' (지난주 루틴은 끝났어요)' : ''}</p>`));
+    const b = h(`<button class="btn primary block">📅 이번 주 루틴 추천 받기</button>`);
+    b.onclick = planPrefsSheet;
+    card.appendChild(b);
+    return card;
+  }
+  card.querySelector('.re').onclick = planPrefsSheet;
+  if (plan.summary) card.appendChild(h(`<p class="small" style="margin-top:0">${esc(plan.summary)}</p>`));
+  const list = h(`<div class="plan"></div>`);
+  for (const d of plan.days) {
+    const isToday = d.date === today();
+    const done = planDone(d);
+    const meta = [d.duration ? `${d.duration}분` : '', d.type === 'swim' && d.distance ? `${d.distance}m` : '', d.type === 'cardio' ? [d.kind, d.distance ? d.distance + 'km' : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
+    const row = h(`<details class="plan-day ${isToday ? 'today' : ''} ${d.type}" ${isToday ? 'open' : ''}>
+      <summary><span class="pd-dow">${d.dow}<small>${fmtShort(d.date)}</small></span>
+        <span class="pd-title">${PLAN_ICON[d.type] || ''} ${esc(d.title)}${meta ? `<small>${esc(meta)}</small>` : ''}</span>
+        ${done ? '<span class="chip ok">✓ 완료</span>' : isToday && d.type !== 'rest' ? '<span class="chip today-chip">오늘</span>' : ''}</summary>
+      ${d.items.length ? `<ul class="pd-items">${d.items.map((x) => `<li><b>${esc(x.name)}</b> <span>${esc(x.detail)}</span></li>`).join('')}</ul>` : ''}
+    </details>`);
+    if (d.type !== 'rest') {
+      const go = h(`<button class="btn sm ${isToday ? 'primary' : ''}" style="margin:4px 0 6px">이 운동 기록하기</button>`);
+      go.onclick = () => workoutForm(null, d.type, presetFrom(d));
+      row.appendChild(go);
+    }
+    list.appendChild(row);
+  }
+  card.appendChild(list);
+  if (plan.tips?.length) card.appendChild(h(`<div class="small" style="margin-top:10px">${plan.tips.map((t) => `<div>💡 ${esc(t)}</div>`).join('')}</div>`));
+  if (plan.source === 'template') card.appendChild(h(`<p class="small muted">기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아요.</p>`));
+  return card;
+}
+
+async function planPrefsSheet() {
+  const prefs = structuredClone({ ...defaultPrefs(), ...(db.settings.planPrefs || {}) });
+  const body = h(`<div>
+    <div class="field"><span>운동할 수 있는 요일</span><div class="pills dows" style="flex-wrap:wrap">${DOWS.map((d) => `<button type="button" class="pill ${prefs.days.includes(d) ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div></div>
+    <div class="field"><span>1회 운동 시간</span><div class="seg mins">${[30, 45, 60, 90].map((m) => `<button type="button" data-m="${m}" class="${prefs.minutes === m ? 'on' : ''}">${m}분</button>`).join('')}</div></div>
+    <div class="field"><span>넣을 운동</span><div class="pills acts" style="flex-wrap:wrap">${ACTS.map(([k, l]) => `<button type="button" class="pill ${prefs.acts.includes(k) ? 'on' : ''}" data-a="${k}">${l}</button>`).join('')}</div></div>
+    <label class="field"><span>요청사항 (선택)</span><input type="text" class="note" placeholder="예: 무릎이 안 좋아요, 수영은 주 2회만" value="${esc(prefs.note)}"></label>
+    <div class="out"></div>
+    <button class="btn primary block go">추천 받기</button></div>`);
+  const close = sheet('📅 루틴 추천 조건', body);
+  const tog = (arr, x) => { const i = arr.indexOf(x); i >= 0 ? arr.splice(i, 1) : arr.push(x); };
+  body.querySelectorAll('[data-d]').forEach((b) => (b.onclick = () => { tog(prefs.days, b.dataset.d); b.classList.toggle('on'); }));
+  body.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => { tog(prefs.acts, b.dataset.a); b.classList.toggle('on'); }));
+  body.querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { prefs.minutes = +b.dataset.m; body.querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  const sample = await sampleReady();
+  const apiKey = db.settings.apiKey;
+  const goBtn = body.querySelector('.go');
+  goBtn.textContent = sample || apiKey ? '🤖 Claude에게 추천 받기' : '기본 루틴 만들기';
+  goBtn.onclick = async () => {
+    prefs.days.sort((a, b) => DOWS.indexOf(a) - DOWS.indexOf(b));
+    prefs.note = body.querySelector('.note').value.trim();
+    if (!prefs.days.length || !prefs.acts.length) return toast('요일과 운동을 하나 이상 골라 주세요');
+    const out = body.querySelector('.out');
+    let plan;
+    if (sample || apiKey) {
+      goBtn.disabled = true;
+      goBtn.innerHTML = '<span class="spinner"></span> 루틴 짜는 중… (10~30초)';
+      try {
+        plan = await generatePlan({ sample, apiKey, prefs });
+      } catch (err) {
+        console.error(err);
+        out.innerHTML = `<p class="small up">${err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 눌러 주세요.' : err?.code === 'not_granted' ? 'Claude 사용을 허용해야 추천을 받을 수 있어요.' : '추천을 받지 못했어요. 다시 눌러 주세요.'}</p>`;
+        goBtn.disabled = false; goBtn.textContent = '🤖 다시 시도';
+        return;
+      }
+    } else plan = templatePlan(prefs);
+    db.settings.planPrefs = prefs;
+    db.plan = plan;
+    save(); close(); rerender(); toast('이번 주 루틴을 만들었어요');
+  };
 }
 
 async function watchSheet(jpegs) {

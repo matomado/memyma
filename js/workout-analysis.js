@@ -81,10 +81,9 @@ export function comments(weeks) {
   return pts;
 }
 
-/** Claude 코치에게 보낼 최근 4주 요약 */
-export function coachPrompt() {
-  const s = db.settings;
-  const days = Array.from({ length: 28 }, (_, i) => addDays(today(), -27 + i));
+/** 최근 n일 날짜별 체중·섭취·운동 + 인바디 요약 (Claude 에게 보낼 글) */
+export function recordSummary(n = 28) {
+  const days = Array.from({ length: n }, (_, i) => addDays(today(), -(n - 1) + i));
   const lines = days.map((d) => {
     const ws = workoutsOf(d).map((w) => {
       const p = [{ swim: '수영', weight: '웨이트', cardio: '유산소', etc: '기타' }[w.type]];
@@ -101,6 +100,13 @@ export function coachPrompt() {
     return `${d}: 체중 ${kg ? kg + 'kg' : '-'} | 섭취 ${hasMeals(d) ? intakeOf(d) + 'kcal' : '기록없음'} | 운동 ${ws.length ? ws.join(', ') : '없음'}`;
   });
   const ib = inbodySorted().slice(-6).map((r) => `${r.date}: 체중 ${r.weight ?? '-'}kg, 골격근 ${r.smm ?? '-'}kg, 체지방률 ${r.pbf ?? '-'}%`);
+  return { lines, ib };
+}
+
+/** Claude 코치에게 보낼 최근 4주 요약 */
+export function coachPrompt() {
+  const s = db.settings;
+  const { lines, ib } = recordSummary(28);
   return `당신은 다정하지만 현실적인 다이어트·운동 코치입니다. 아래 기록을 보고 이 사람에게 조언해 주세요.
 
 [정보] 성별 ${s.sex === 'male' ? '남성' : '여성'}, 키 ${s.height || '모름'}cm, 목표 체중 ${s.goalWeight || '모름'}kg, 현재 목적: ${(GOAL[s.goal] || GOAL.diet)[0]}, 하루 섭취 목표 ${s.kcalTarget}kcal. 주로 하는 운동: 수영, 웨이트(무분할 루틴), 유산소.

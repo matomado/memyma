@@ -56,6 +56,7 @@ function defaults() {
     workouts: [],  // [{ id, date, type, ... }]
     inbody: [],    // [{ id, date, time, weight, smm, bfm, pbf, ... }]
     weights: {},   // 매일 아침 체중 { 'YYYY-MM-DD': kg }
+    plan: null,    // 이번 주 추천 루틴
   };
 }
 
@@ -94,7 +95,7 @@ export function save() {
 // state -> 문서 묶음 (문서 하나당 256KB 제한이 있어서 월별로 나눔)
 function toDocs() {
   const { apiKey, ...settings } = state.settings; // API 키는 기기에만
-  const docs = { meta: { settings, foods: state.foods }, inbody: { records: state.inbody }, weights: { days: state.weights || {} } };
+  const docs = { meta: { settings, foods: state.foods, plan: state.plan || null }, inbody: { records: state.inbody }, weights: { days: state.weights || {} } };
   for (const [date, day] of Object.entries(state.meals)) {
     const id = 'meals-' + date.slice(0, 7);
     (docs[id] ||= { days: {} }).days[date] = day;
@@ -161,6 +162,7 @@ export async function initCloud() {
     if (meta) {
       state.settings = { ...defaults().settings, ...meta.settings, apiKey };
       state.foods = meta.foods || state.foods;
+      state.plan = meta.plan || null;
     }
     state.meals = meals;
     state.workouts = workouts;
