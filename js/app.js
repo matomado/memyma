@@ -8,7 +8,7 @@ import {
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
 import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
-import { EQUIPMENT, ALL_EQUIP, gymRoutine, identifyEquipment } from './gym.js';
+import { EQUIPMENT, ALL_EQUIP, MY_GYM, gymRoutine, identifyEquipment } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
@@ -707,6 +707,12 @@ function equipSection(onChange) {
   const changed = () => { save(); draw(); onChange?.(); };
   function draw() {
     box.innerHTML = '';
+    const missing = MY_GYM.filter((x) => !list().includes(x));
+    if (missing.length) {
+      const pre = h(`<button type="button" class="btn block" style="margin-bottom:12px">📍 보내준 헬스장 사진 기준으로 한 번에 선택 (${MY_GYM.length}개)</button>`);
+      pre.onclick = () => { list().push(...missing); changed(); toast(`기구 ${missing.length}개를 선택했어요. 다른 게 있으면 더 눌러 주세요`); };
+      box.appendChild(pre);
+    }
     for (const [group, items] of EQUIPMENT) {
       const row = h(`<div class="field" style="margin-bottom:10px"><span>${group}</span><div class="pills" style="flex-wrap:wrap"></div></div>`);
       const pills = row.querySelector('.pills');
