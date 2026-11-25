@@ -609,7 +609,10 @@ function foodForm(food, after, { onSaved, label } = {}) {
       body.querySelector('.k').value = r.kcal;
       groups = r.groups;
       const g = body.querySelector('.grp'); g.innerHTML = ''; g.appendChild(groupPills(groups));
-      msg.innerHTML = `<span class="good">✓ 성분표를 읽었어요.</span> <span class="muted">${esc(r.note)} 확인 후 저장하세요.</span>`;
+      msg.innerHTML = `<span class="good">✓ 성분표를 읽었어요.</span> <span class="muted">${esc(r.note)}</span>`
+        + (r.macro ? `<div style="margin-top:4px"><b>읽은 값</b> ${esc(r.macro)} · ${r.kcal}kcal</div>` : '')
+        + (r.warn ? `<div class="up" style="margin-top:4px">⚠️ ${esc(r.warn)}</div>` : '')
+        + `<div class="muted" style="margin-top:4px">성분표와 숫자가 맞는지 확인하고, 틀린 칸은 고친 뒤 저장하세요. 분류(탄수·단백·섬유)도 눌러서 고칠 수 있어요.</div>`;
     } catch (err) {
       console.error(err);
       msg.innerHTML = `<span class="up">${err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 해 주세요.' : '성분표를 읽지 못했어요. 다시 찍거나 직접 입력해 주세요.'}</span>`;

@@ -96,11 +96,13 @@ function tidy(out, foods) {
 /* ---------- 영양성분표 사진 → 음식 1개 ---------- */
 const LABEL_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['found', 'name', 'amount', 'unit', 'kcal', 'groups', 'note'],
+  required: ['found', 'name', 'amount', 'unit', 'kcal', 'carbs', 'protein', 'fat', 'fiber', 'groups', 'note'],
   properties: {
     found: { type: 'boolean' },
     name: { type: 'string' },
     amount: { type: 'number' }, unit: { type: 'string' }, kcal: { type: 'number' },
+    carbs: { anyOf: [{ type: 'number' }, { type: 'null' }] }, protein: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+    fat: { anyOf: [{ type: 'number' }, { type: 'null' }] }, fiber: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     groups: { type: 'array', items: { type: 'string', enum: ['carb', 'protein', 'fiber'] } },
     note: { type: 'string' },
   },
@@ -110,6 +112,8 @@ const LABEL_PROMPT = `이 사진은 식품 포장의 영양성분표(또는 제�
 - 기준량 정하기: 한 번에 다 먹는 제품(편의점 도시락, 삼각김밥, 프로틴바, 요거트 1컵, 음료 1병, 과자 1봉 등)이면 amount=1, unit="개(총 내용량 120g)"처럼 포장 1개 기준, kcal=총 내용량 열량.
   여러 번 나눠 먹는 제품(우유 1L, 시리얼, 견과 큰 봉지 등)이면 표에 적힌 1회 제공량 기준(예: amount=30, unit="g"), kcal=1회 제공량 열량.
 - 표에 "총 내용량 OOg, 100g당 OOkcal"만 있으면 총 내용량 열량을 계산해서 포장 1개 기준으로.
+- carbs·protein·fat·fiber: kcal 와 같은 기준량의 탄수화물·단백질·지방·식이섬유 g(표에 없으면 null).
+- 숫자는 소수점 위치를 특히 조심해서 읽으세요(15g 을 1.5g 으로, 1.5g 을 15g 으로 읽지 않게). 다 읽은 뒤 탄수화물×4 + 단백질×4 + 지방×9 가 kcal 와 대략 맞는지 확인하고, 크게 다르면 다시 읽으세요.
 - groups: 영양성분을 보고 주요 역할. 탄수화물이 많으면 carb, 단백질이 열량의 20% 이상이면 protein, 식이섬유 3g 이상이거나 채소·과일 제품이면 fiber. 여러 개 가능.
 - note: 기준을 한 줄로(예: "총 내용량 120g 1개 기준, 단백질 20g").
 - 영양성분표나 열량을 찾을 수 없으면 found=false.
@@ -117,15 +121,33 @@ const LABEL_PROMPT = `이 사진은 식품 포장의 영양성분표(또는 제�
 
 export async function analyzeLabel({ sample, apiKey, jpegs }) {
   const out = sample
-    ? await sample.json(LABEL_PROMPT + '\n\n반드시 JSON 하나만 답하세요. 형식: {"found": true, "name": "...", "amount": 숫자, "unit": "...", "kcal": 숫자, "groups": ["protein"], "note": "..."}', { images: jpegs.slice(0, 3).map(dataUrlToBlob), modelTier: 'default' })
+    ? await sample.json(LABEL_PROMPT + '\n\n반드시 JSON 하나만 답하세요. 형식: {"found": true, "name": "...", "amount": 숫자, "unit": "...", "kcal": 숫자, "carbs": 숫자 또는 null, "protein": 숫자 또는 null, "fat": 숫자 또는 null, "fiber": 숫자 또는 null, "groups": ["protein"], "note": "..."}', { images: jpegs.slice(0, 3).map(dataUrlToBlob), modelTier: 'default' })
     : await claudeImageJSON(jpegs.slice(0, 3), apiKey, LABEL_PROMPT, LABEL_SCHEMA);
   if (!out || out.found === false || !isFinite(+out.kcal)) return null;
+  const g = (v) => (v == null || v === '' || !isFinite(+v) ? null : +v);
+  const kcal = Math.max(0, Math.round(+out.kcal));
+  const m = { carbs: g(out.carbs), protein: g(out.protein), fat: g(out.fat), fiber: g(out.fiber) };
+  // 영양 분류는 숫자로 정함
+  let groups = Array.isArray(out.groups) ? out.groups.filter((x) => ['carb', 'protein', 'fiber'].includes(x)) : [];
+  if (m.carbs != null || m.protein != null || m.fiber != null) {
+    groups = [];
+    if (m.carbs != null && (m.carbs >= 10 || (kcal && (m.carbs * 4) / kcal >= 0.3))) groups.push('carb');
+    if (m.protein != null && kcal && (m.protein * 4) / kcal >= 0.2) groups.push('protein');
+    if (m.fiber != null && m.fiber >= 3) groups.push('fiber');
+  }
+  // 검산: 탄수×4 + 단백×4 + 지방×9 ≈ kcal
+  let warn = '';
+  if (m.carbs != null && m.protein != null && m.fat != null && kcal > 30) {
+    const calc = m.carbs * 4 + m.protein * 4 + m.fat * 9;
+    if (Math.abs(calc - kcal) / kcal > 0.25) warn = `영양성분으로 계산하면 약 ${Math.round(calc)}kcal인데 표에는 ${kcal}kcal로 읽혔어요. 숫자가 잘못 읽혔을 수 있으니 성분표와 비교해 주세요.`;
+  }
+  const macro = [m.carbs != null ? `탄수 ${m.carbs}g` : '', m.protein != null ? `단백 ${m.protein}g` : '', m.fat != null ? `지방 ${m.fat}g` : '', m.fiber != null ? `식이섬유 ${m.fiber}g` : ''].filter(Boolean).join(' · ');
   return {
+    macro, warn,
     name: String(out.name || '').trim().slice(0, 40),
     amount: +out.amount > 0 ? +out.amount : 1,
     unit: String(out.unit || '개').trim().slice(0, 24) || '개',
-    kcal: Math.max(0, Math.round(+out.kcal)),
-    groups: Array.isArray(out.groups) ? out.groups.filter((g) => ['carb', 'protein', 'fiber'].includes(g)) : [],
+    kcal, groups,
     note: typeof out.note === 'string' ? out.note : '',
   };
 }
