@@ -8,14 +8,15 @@ import {
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
+import { weeklyStats, swimPaces, comments, coachPrompt } from './workout-analysis.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
-  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, sampleReady, analyzeWithSample, dataUrlToBlob,
+  fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, sampleReady, analyzeWithSample, claudeText, dataUrlToBlob,
 } from './inbody.js';
 
 /* ================= 공통 유틸 ================= */
 const $view = document.getElementById('view');
-const ui = { date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, pending: null };
+const ui = { date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, d = 1) => (v == null || v === '' ? '-' : (+v).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'));
@@ -44,6 +45,18 @@ function sheet(title, body, { onClose } = {}) {
   document.body.style.overflow = 'hidden';
   return close;
 }
+/** 고른 사진들 → JPEG 목록 (최대 10장) */
+async function readImages(fileList) {
+  const files = [...(fileList || [])].slice(0, 10);
+  const out = [];
+  for (const f of files) {
+    try { out.push(imageToJpeg(await fileToImage(f), files.length > 3 ? 1280 : 1568)); } catch { /* 못 여는 파일은 건너뜀 */ }
+  }
+  if (fileList?.length > 10) toast('한 번에 10장까지만 올릴 수 있어요');
+  return out;
+}
+const previews = (jpegs) => `<div class="thumbs">${jpegs.map((j) => `<img src="${j}" alt="">`).join('')}</div>`;
+
 function ask(msg, okLabel = '삭제') {
   return new Promise((res) => {
     let done = false;
@@ -224,7 +237,7 @@ function addFoodSheet(date, slot, label) {
   const cnt = foodUseCount();
   const sel = new Map(); // foodId -> qty
   const body = h(`<div>
-    <label class="btn block" style="margin-bottom:10px">📷 음식 사진으로 칼로리 계산<input type="file" accept="image/*" class="photo" hidden></label>
+    <label class="btn block" style="margin-bottom:10px">📷 음식 사진으로 칼로리 계산 (여러 장 가능)<input type="file" accept="image/*" class="photo" multiple hidden></label>
     <div class="row" style="margin-bottom:10px"><input type="text" placeholder="음식 검색 (예: 멸치볶음, 시금치나물)" class="q grow" enterkeyhint="search"></div>
     <button class="btn ghost block ask-ai" style="margin-bottom:10px" hidden></button>
     <div class="food-grid"></div>
@@ -291,12 +304,10 @@ function addFoodSheet(date, slot, label) {
   body.querySelector('.q').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); askAI(); } };
   const close = sheet(`${label} 추가`, body);
   body.querySelector('.photo').onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    let jpeg;
-    try { jpeg = imageToJpeg(await fileToImage(file)); } catch { return toast('사진을 열 수 없어요'); }
+    const jpegs = await readImages(e.target.files);
+    if (!jpegs.length) return toast('사진을 열 수 없어요');
     close();
-    aiMealSheet(date, slot, label, { jpeg });
+    aiMealSheet(date, slot, label, { jpegs });
   };
   okBtn.onclick = () => {
     if (!sel.size) return;
@@ -321,9 +332,10 @@ function addFoodSheet(date, slot, label) {
   drawGrid(); drawPicked();
 }
 
-async function aiMealSheet(date, slot, label, { jpeg, text }) {
+async function aiMealSheet(date, slot, label, { jpegs, text }) {
+  const jpeg = jpegs?.length;
   const body = h(`<div>
-    ${jpeg ? `<img class="preview-img" src="${jpeg}" alt="">` : `<p style="margin-top:0"><b>${esc(text)}</b></p>`}
+    ${jpeg ? previews(jpegs) : `<p style="margin-top:0"><b>${esc(text)}</b></p>`}
     <div class="out"><p class="row small"><span class="spinner"></span><span>${jpeg ? 'Claude가 음식과 양을 보고 칼로리를 계산하는 중… (10~30초)' : 'Claude가 칼로리를 찾는 중… (5~20초)'}</span></p></div>
   </div>`);
   const close = sheet(`${label} · ${jpeg ? '사진으로 추가' : 'Claude에게 물어보기'}`, body);
@@ -337,7 +349,7 @@ async function aiMealSheet(date, slot, label, { jpeg, text }) {
   let res;
   try {
     res = jpeg
-      ? await analyzeFoodPhoto({ sample, apiKey, jpeg, foods: db.foods })
+      ? await analyzeFoodPhoto({ sample, apiKey, jpegs, foods: db.foods })
       : await analyzeFoodText({ sample, apiKey, text, foods: db.foods });
   } catch (err) {
     console.error(err);
@@ -519,14 +531,12 @@ function renderWorkout() {
   const ws = workoutsOf(ui.date);
   const card = h(`<div class="card"><h2>운동 기록 <small>${ws.length ? `${kc(burnedOf(ui.date))} kcal 소모` : ''}</small></h2></div>`);
   card.appendChild(ws.length ? workoutList(ws) : h(`<div class="empty">이 날 운동 기록이 없어요</div>`));
-  const watch = h(`<label class="btn block" style="margin-top:12px">⌚ 애플워치 캡처로 추가<input type="file" accept="image/*" hidden></label>`);
+  const watch = h(`<label class="btn block" style="margin-top:12px">⌚ 애플워치 캡처로 추가 (여러 장 가능)<input type="file" accept="image/*" multiple hidden></label>`);
   watch.querySelector('input').onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const jpegs = await readImages(e.target.files);
     e.target.value = '';
-    let jpeg;
-    try { jpeg = imageToJpeg(await fileToImage(file)); } catch { return toast('사진을 열 수 없어요'); }
-    watchSheet(jpeg);
+    if (!jpegs.length) return toast('사진을 열 수 없어요');
+    watchSheet(jpegs);
   };
   card.appendChild(watch);
   const btns = h(`<div class="grid3" style="margin-top:8px"></div>`);
@@ -556,10 +566,77 @@ function renderWorkout() {
     <div class="row between small" style="margin-top:10px"><span>총 ${kc(sum(all, 'duration'))}분 · ${new Set(all.map((w) => w.date)).size}일 운동</span><b>${kc(sum(all, 'kcal'))} kcal</b></div>
     <div class="row" style="gap:4px;margin-top:10px">${days.map((d) => { const n = workoutsOf(d); return `<div class="grow" style="text-align:center"><div class="small muted">${DOW[parseISO(d).getDay()]}</div><div style="height:26px;line-height:26px;border-radius:8px;background:${n.length ? '#2f3640' : '#f4f5f7'};color:#fff;font-size:12px">${n.map((w) => TYPE[w.type].icon).join('')}</div></div>`; }).join('')}</div>
   </div>`));
+  renderWorkoutAnalysis();
 }
 
-async function watchSheet(jpeg) {
-  const body = h(`<div><img class="preview-img" src="${jpeg}" alt="">
+function renderWorkoutAnalysis() {
+  const weeks = weeklyStats(ui.woRange);
+  const card = h(`<div class="card analysis"><h2>운동 분석 <span class="pills">${[[4, '4주'], [12, '12주']].map(([v, l]) => `<button class="pill ${ui.woRange === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</span></h2></div>`);
+  card.querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => { ui.woRange = +b.dataset.v; rerender(); }));
+  comments(weeks).forEach((p) => card.appendChild(h(`<div class="pt"><span class="dot" style="background:${p.color}"></span><div>${p.html}</div></div>`)));
+
+  card.appendChild(h(`<h3 style="margin-top:14px">주별 운동 시간</h3>`));
+  card.appendChild(barChart(weeks.map((w) => ({ x: w.label, a: w.minutes, b: 0 })), { target: 150, overColor: '#3bb98a', targetLabel: '권장 150분', unit: '분' }));
+  card.appendChild(h(`<div class="legend"><span><i style="background:#2f3640"></i>운동 시간</span><span><i style="background:#3bb98a"></i>권장량 달성</span><span>주 시작(월요일) 날짜 기준</span></div>`));
+
+  const tot = (k) => weeks.reduce((a, w) => a + w[k], 0);
+  card.appendChild(h(`<div class="grid2" style="margin-top:12px">
+    <div class="stat"><div class="k">🏊 수영</div><div class="v">${tot('swim')}<small>회 · ${kc(tot('swimM'))}m</small></div></div>
+    <div class="stat"><div class="k">🏋️ 웨이트</div><div class="v">${tot('weight')}<small>회</small></div></div>
+    <div class="stat"><div class="k">🏃 유산소</div><div class="v">${tot('cardio')}<small>회 · ${nf(tot('cardioKm'))}km</small></div></div>
+    <div class="stat"><div class="k">총 소모</div><div class="v">${kc(tot('kcal'))}<small>kcal</small></div></div>
+  </div>`));
+
+  const paces = swimPaces(weeks[0].start);
+  if (paces.length >= 2) {
+    card.appendChild(h(`<h3 style="margin-top:14px">수영 100m 페이스 <small class="muted">(분, 낮을수록 빠름)</small></h3>`));
+    card.appendChild(lineChart(paces.map((p) => ({ x: fmtShort(p.date), value: p.pace, tip: p.date.slice(2).replace(/-/g, '.') })), { unit: '분', decimals: 2, colorFor: () => '#4a7bf7' }));
+  }
+  const hrs = weeks.flatMap((w) => w.ws).filter((w) => w.avgHr).sort((a, b) => a.date.localeCompare(b.date));
+  if (hrs.length >= 2) {
+    card.appendChild(h(`<h3 style="margin-top:14px">운동 평균 심박수 <small class="muted">(bpm)</small></h3>`));
+    card.appendChild(lineChart(hrs.slice(-10).map((w) => ({ x: fmtShort(w.date), value: w.avgHr, tip: `${w.date.slice(2).replace(/-/g, '.')} ${TYPE[w.type].label}` })), { unit: 'bpm', decimals: 0, colorFor: () => '#f0506e' }));
+  }
+  $view.appendChild(card);
+
+  // Claude 코치
+  const coach = h(`<div class="card"><h2>🤖 Claude 코치</h2>
+    <p class="small muted" style="margin-top:0">최근 4주 운동·식단·인바디 기록을 보고 잘한 점, 아쉬운 점, 다음 주 운동 계획을 알려줘요.</p>
+    <div class="coach-out" style="white-space:pre-wrap;line-height:1.6"></div>
+    <button class="btn primary block" style="margin-top:10px">${ui.coach ? '다시 분석 받기' : '분석 받기'}</button></div>`);
+  const outEl = coach.querySelector('.coach-out');
+  outEl.textContent = ui.coach;
+  const btn = coach.querySelector('button');
+  btn.onclick = async () => {
+    const sample = await sampleReady();
+    const apiKey = db.settings.apiKey;
+    if (!sample && !apiKey) {
+      outEl.textContent = window.claude?.use ? 'Claude 사용을 허용해야 분석을 받을 수 있어요. 페이지를 새로고침한 뒤 허용을 눌러 주세요.' : '이 기능은 claude.ai 링크로 열거나, 설정에 Claude API 키를 넣으면 쓸 수 있어요.';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 분석 중…';
+    outEl.textContent = '';
+    try {
+      const text = sample
+        ? (await sample(coachPrompt(), { modelTier: 'default', cache: false, onText: ({ text }) => { outEl.textContent = text; } })).text
+        : await claudeText(apiKey, coachPrompt());
+      ui.coach = text;
+      outEl.textContent = text;
+    } catch (err) {
+      console.error(err);
+      outEl.textContent = err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 눌러 주세요.'
+        : err?.code === 'not_granted' ? 'Claude 사용을 허용해야 분석을 받을 수 있어요.'
+        : `분석하지 못했어요: ${err?.message || err}`;
+    }
+    btn.disabled = false;
+    btn.textContent = '다시 분석 받기';
+  };
+  $view.appendChild(coach);
+}
+
+async function watchSheet(jpegs) {
+  const body = h(`<div>${previews(jpegs)}
     <div class="out"><p class="row small"><span class="spinner"></span><span>Claude가 애플워치 기록을 읽는 중… (10~30초)</span></p></div></div>`);
   const close = sheet('⌚ 애플워치 캡처', body);
   const out = body.querySelector('.out');
@@ -571,7 +648,7 @@ async function watchSheet(jpeg) {
   }
   let res;
   try {
-    res = await analyzeWatch({ sample, apiKey, jpeg });
+    res = await analyzeWatch({ sample, apiKey, jpegs });
   } catch (err) {
     console.error(err);
     const code = err?.code;
@@ -721,21 +798,16 @@ function workoutForm(existing, type, preset = {}) {
 /* ================= 인바디 ================= */
 function renderInbody() {
   const up = h(`<div class="card"><h2>인바디 기록 추가</h2>
-    <label class="drop"><b>📷 인바디 캡처 올리기</b><span class="small muted">결과 화면 또는 '변화' 그래프 화면 캡처를 올리면<br>체중·골격근·체지방률 등을 읽어서 입력해요</span>
-      <input type="file" accept="image/*" hidden></label>
+    <label class="drop"><b>📷 인바디 캡처 올리기</b><span class="small muted">결과 화면, '변화' 그래프 화면 캡처를 여러 장 한 번에 올려도 돼요<br>체중·골격근·체지방률 등을 읽어서 입력해요</span>
+      <input type="file" accept="image/*" multiple hidden></label>
     <div class="status"></div>
     <button class="btn ghost block" data-a="manual" style="margin-top:10px">✏️ 직접 입력</button></div>`);
   const status = up.querySelector('.status');
   up.querySelector('input[type=file]').onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const jpegs = await readImages(e.target.files);
     e.target.value = '';
     status.innerHTML = '';
-    let jpeg;
-    try {
-      const img = await fileToImage(file);
-      jpeg = imageToJpeg(img);
-    } catch { return toast('이미지를 열 수 없어요'); }
+    if (!jpegs.length) return toast('이미지를 열 수 없어요');
     const sample = await sampleImageReady();
     const key = db.settings.apiKey;
     if (!sample && window.claude?.use) {
@@ -743,15 +815,15 @@ function renderInbody() {
       return;
     }
     const smart = !!(sample || key);
-    status.appendChild(h(`<img class="preview-img" src="${jpeg}" alt="">`));
+    status.appendChild(h(previews(jpegs)));
     const msg = h(`<p class="row small"><span class="spinner"></span><span class="t">${smart ? 'Claude가 캡처를 읽는 중… (10~30초)' : '문자 인식(OCR) 중… 처음엔 엔진을 받느라 조금 걸려요'}</span></p>`);
     status.appendChild(msg);
     try {
       const res = sample
-        ? await analyzeWithSample(sample, jpeg)
+        ? await analyzeWithSample(sample, jpegs)
         : key
-          ? await analyzeWithClaude(jpeg, key)
-          : await analyzeWithOCR(jpeg, (p) => (msg.querySelector('.t').textContent = `문자 인식 중… ${Math.round(p * 100)}%`));
+          ? await analyzeWithClaude(jpegs, key)
+          : await analyzeWithOCR(jpegs, (p) => (msg.querySelector('.t').textContent = `문자 인식 중… ${Math.round(p * 100)}%`));
       msg.remove();
       if (!res.measurements.length) { status.appendChild(h(`<p class="small up">측정값을 찾지 못했어요. 직접 입력해 주세요.</p>`)); return; }
       reviewSheet(res.measurements, res.note + (smart ? '' : ' (설정에서 Claude API 키를 넣으면 훨씬 정확하고, 변화 그래프의 여러 날짜도 한 번에 읽어요.)'));

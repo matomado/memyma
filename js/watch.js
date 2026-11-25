@@ -1,5 +1,5 @@
 // 애플워치(피트니스/운동 앱) 캡처 → 운동 기록 (Claude)
-import { claudeImageJSON, dataUrlToBlob } from './inbody.js';
+import { claudeImageJSON, dataUrlToBlob, maxImages, chunks } from './inbody.js';
 import { today } from './store.js';
 
 const KINDS = ['러닝', '걷기', '실내자전거', '천국의계단', '일립티컬', '줄넘기', '등산', '기타'];
@@ -30,7 +30,9 @@ const SCHEMA = {
   },
 };
 
-const PROMPT = (t) => `이 이미지는 애플워치 운동 기록(아이폰 '피트니스' 앱 또는 워치 운동 요약) 캡처입니다. 보이는 운동을 모두 읽으세요.
+const PROMPT = (t) => `이 이미지는 애플워치 운동 기록(아이폰 '피트니스' 앱 또는 워치 운동 요약) 캡처입니다(여러 장일 수 있음). 보이는 운동을 모두 읽으세요.
+
+- 여러 장에 같은 운동(같은 날짜·종류·시간)이 나오면 한 번만 넣고, 화면마다 보이는 값을 합쳐서 채우세요.
 
 - 오늘은 ${t} 입니다. 날짜가 "오늘"/"어제"/요일/연도 없는 날짜로 보이면 오늘 기준으로 YYYY-MM-DD 로 바꾸세요. 날짜가 안 보이면 null.
 - type: 수영(풀 수영·실외 수영) → "swim", 근력 운동(기능성/전통적 근력 운동, 코어 트레이닝) → "weight", 달리기·걷기·사이클·계단 오르기·일립티컬·하이킹·줄넘기·HIIT 등 → "cardio", 그 밖(요가, 필라테스 등) → "etc".
@@ -44,13 +46,19 @@ const PROMPT = (t) => `이 이미지는 애플워치 운동 기록(아이폰 '�
 - 화면에 숫자로 보이지 않는 값은 계산하거나 추측하지 말고 null.
 - 애플워치 운동 화면이 아니면 workouts 를 빈 배열로 두고 note 에 이유를 쓰세요.`;
 
-export async function analyzeWatch({ sample, apiKey, jpeg }) {
-  const out = sample
-    ? await sample.json(PROMPT(today()) + `
+export async function analyzeWatch({ sample, apiKey, jpegs }) {
+  const raw = [], notes = [];
+  for (const part of chunks(jpegs, await maxImages(sample))) {
+    const out = sample
+      ? await sample.json(PROMPT(today()) + `
 
 반드시 JSON 하나만 답하세요. 형식:
-{"note": "짧은 메모", "workouts": [{"type": "swim|weight|cardio|etc", "kind": 문자열 또는 null, "title": 문자열 또는 null, "date": "YYYY-MM-DD" 또는 null, "duration": 숫자 또는 null, "activeKcal": 숫자 또는 null, "totalKcal": 숫자 또는 null, "distance": 숫자 또는 null, "avgHr": 숫자 또는 null, "strokes": []}]}`, { images: [dataUrlToBlob(jpeg)], modelTier: 'default' })
-    : await claudeImageJSON(jpeg, apiKey, PROMPT(today()), SCHEMA);
+{"note": "짧은 메모", "workouts": [{"type": "swim|weight|cardio|etc", "kind": 문자열 또는 null, "title": 문자열 또는 null, "date": "YYYY-MM-DD" 또는 null, "duration": 숫자 또는 null, "activeKcal": 숫자 또는 null, "totalKcal": 숫자 또는 null, "distance": 숫자 또는 null, "avgHr": 숫자 또는 null, "strokes": []}]}`, { images: part.map(dataUrlToBlob), modelTier: 'default' })
+      : await claudeImageJSON(part, apiKey, PROMPT(today()), SCHEMA);
+    if (Array.isArray(out?.workouts)) raw.push(...out.workouts);
+    if (typeof out?.note === 'string' && out.note) notes.push(out.note);
+  }
+  const out = { workouts: raw, note: notes.join(' ') };
   const num = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
   const workouts = (Array.isArray(out?.workouts) ? out.workouts : []).map((w) => {
     const type = ['swim', 'weight', 'cardio', 'etc'].includes(w?.type) ? w.type : 'etc';
@@ -67,5 +75,8 @@ export async function analyzeWatch({ sample, apiKey, jpeg }) {
       strokes: Array.isArray(w.strokes) ? w.strokes.filter((s) => STROKES.includes(s)) : [],
     };
   });
-  return { workouts, note: typeof out?.note === 'string' ? out.note : '' };
+  // 여러 묶음에서 겹친 운동 제거 (같은 날짜·종류·시간)
+  const seen = new Set();
+  const uniq = workouts.filter((w) => { const k = [w.date, w.type, w.kind, w.duration, w.title].join('|'); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { workouts: uniq, note: out.note };
 }

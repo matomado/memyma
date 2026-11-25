@@ -245,3 +245,5 @@ svg.chart .hit { fill: transparent; cursor: pointer; }
   .cal .day { min-height: 90px; font-size: 12px; padding: 6px; }
 }
 .food-grid .empty { grid-column: 1 / -1; }
+.thumbs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 2px; }
+.thumbs img { height: 160px; width: auto; border-radius: 10px; flex: none; border: 1px solid var(--line); }

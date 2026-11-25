@@ -1,5 +1,5 @@
 // 음식 사진 또는 음식 이름 → 음식 목록 + kcal 추정 (Claude)
-import { claudeImageJSON, dataUrlToBlob } from './inbody.js';
+import { claudeImageJSON, dataUrlToBlob, maxImages, chunks } from './inbody.js';
 
 const SCHEMA = {
   type: 'object',
@@ -27,7 +27,7 @@ const SCHEMA = {
 
 function prompt(foods) {
   const lib = foods.map((f) => `- id=${f.id}: ${f.name} (${f.amount}${f.unit} = ${f.kcal}kcal)`).join('\n');
-  return `이 사진은 다이어트 중인 사람의 한 끼 식사입니다. 사진에 보이는 음식을 하나씩 나누어 양과 칼로리를 추정하세요.
+  return `이 사진은 다이어트 중인 사람의 한 끼 식사입니다(사진이 여러 장이면 같은 식사를 여러 각도로 찍은 것이니, 같은 음식을 두 번 세지 마세요). 사진에 보이는 음식을 하나씩 나누어 양과 칼로리를 추정하세요.
 
 - 그릇·숟가락·손 크기 등을 기준으로 양을 추정하고, 한국 일반 기준(식약처 영양성분 DB 수준)의 칼로리로 계산하세요.
 - 아래는 이 사람이 자주 먹는 음식 목록입니다. 사진 속 음식이 이 중 하나와 같으면 foodId 에 그 id 를 넣고, unit 은 목록과 같은 단위로, kcal 는 목록의 kcal 를 양에 비례해 계산하세요. 목록에 없으면 foodId 는 null.
@@ -55,11 +55,17 @@ const JSON_FORMAT = `
 반드시 JSON 하나만 답하세요. 형식:
 {"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자}]}`;
 
-export async function analyzeFoodPhoto({ sample, apiKey, jpeg, foods }) {
-  const out = sample
-    ? await sample.json(prompt(foods) + JSON_FORMAT, { images: [dataUrlToBlob(jpeg)], modelTier: 'default' })
-    : await claudeImageJSON(jpeg, apiKey, prompt(foods), SCHEMA);
-  return tidy(out, foods);
+export async function analyzeFoodPhoto({ sample, apiKey, jpegs, foods }) {
+  const items = [], notes = [];
+  for (const part of chunks(jpegs, await maxImages(sample))) {
+    const out = sample
+      ? await sample.json(prompt(foods) + JSON_FORMAT, { images: part.map(dataUrlToBlob), modelTier: 'default' })
+      : await claudeImageJSON(part, apiKey, prompt(foods), SCHEMA);
+    const r = tidy(out, foods);
+    items.push(...r.items);
+    if (r.note) notes.push(r.note);
+  }
+  return { items, note: notes.join(' ') };
 }
 
 export async function analyzeFoodText({ sample, apiKey, text, foods }) {

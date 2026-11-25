@@ -90,7 +90,9 @@ const SCHEMA = {
   },
 };
 
-const PROMPT = (t) => `이 이미지는 InBody(인바디) 앱 화면 캡처 또는 인바디 결과지입니다. 보이는 측정값을 모두 추출하세요.
+const PROMPT = (t) => `이 이미지는 InBody(인바디) 앱 화면 캡처 또는 인바디 결과지입니다(여러 장일 수 있음). 보이는 측정값을 모두 추출하세요.
+
+- 이미지가 여러 장이면 모두 같은 사람의 기록입니다. 같은 날짜·시각의 측정값은 한 항목으로 합치세요.
 
 - 오늘 날짜는 ${t} 입니다. 화면에 연도가 없으면(예: "11.19") 오늘 기준으로 가장 최근의 해당 날짜로 연도를 정하세요. "26.11.19" 같은 표기는 2026-11-19 입니다.
 - '변화' 탭처럼 여러 날짜의 그래프가 있으면, 날짜마다 하나씩 measurements 항목을 만들고 그래프 점 위에 적힌 숫자를 해당 날짜에 넣으세요.
@@ -101,12 +103,12 @@ const PROMPT = (t) => `이 이미지는 InBody(인바디) 앱 화면 캡처 또�
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';
 
-/** API 키로 Claude 에 이미지 1장 + 지시문을 보내고 schema 에 맞는 JSON 을 받음 */
-export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
+/** API 키로 Claude 에 이미지(0~여러 장) + 지시문을 보내고 schema 에 맞는 JSON 을 받음 */
+export async function claudeImageJSON(jpegs, apiKey, prompt, schema) {
   const { default: Anthropic } = await import(SDK_URL);
   // 개인용 앱: 키는 이 브라우저(localStorage)에만 저장되고 Anthropic API 로만 전송됩니다.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const data = jpegDataUrl ? jpegDataUrl.split(',')[1] : null;
+  const imgs = (Array.isArray(jpegs) ? jpegs : jpegs ? [jpegs] : []).map((j) => j.split(',')[1]);
   const res = await client.beta.messages.create({
     model: 'claude-opus-5-5',
     max_tokens: 16000,
@@ -117,7 +119,7 @@ export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
       {
         role: 'user',
         content: [
-          ...(data ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }] : []),
+          ...imgs.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
           { type: 'text', text: prompt },
         ],
       },
@@ -129,9 +131,50 @@ export async function claudeImageJSON(jpegDataUrl, apiKey, prompt, schema) {
   return JSON.parse(text);
 }
 
-export async function analyzeWithClaude(jpegDataUrl, apiKey) {
-  const out = await claudeImageJSON(jpegDataUrl, apiKey, PROMPT(today()), SCHEMA);
-  return { measurements: out.measurements.map(clean), note: out.note || '' };
+/** API 키로 글 답변 받기 (코치 조언) */
+export async function claudeText(apiKey, prompt) {
+  const { default: Anthropic } = await import(SDK_URL);
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const res = await client.beta.messages.create({
+    model: 'claude-opus-5-5',
+    max_tokens: 16000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'medium' },
+    messages: [{ role: 'user', content: prompt }],
+  });
+  if (res.stop_reason === 'refusal') throw new Error('답변이 거절되었습니다.');
+  return res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+}
+
+/** 한 번에 보낼 수 있는 이미지 수 */
+export async function maxImages(sample) {
+  if (!sample) return 5;
+  const lim = await sample.limits().catch(() => null);
+  return Math.max(1, lim?.images?.maxCount || 1);
+}
+export const chunks = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+
+/** 같은 날짜(+시각) 측정값 합치기: 비어 있는 항목만 채움 */
+export function mergeMeasurements(list) {
+  const out = [];
+  for (const m of list) {
+    const same = out.find((x) => x.date === m.date && (!x.time || !m.time || x.time === m.time));
+    if (!same) { out.push({ ...m }); continue; }
+    if (!same.time && m.time) same.time = m.time;
+    for (const k of METRICS.map((x) => x.key)) if (same[k] == null && m[k] != null) same[k] = m[k];
+  }
+  return out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+}
+
+export async function analyzeWithClaude(jpegs, apiKey) {
+  const all = [], notes = [];
+  for (const part of chunks(jpegs, 5)) {
+    const out = await claudeImageJSON(part, apiKey, PROMPT(today()), SCHEMA);
+    all.push(...out.measurements.map(clean));
+    if (out.note) notes.push(out.note);
+  }
+  return { measurements: mergeMeasurements(all), note: notes.join(' ') };
 }
 
 /** data: URL -> Blob (claude.ai 안에서는 fetch(data:) 가 막혀 있어서 직접 변환) */
@@ -158,17 +201,20 @@ export async function sampleImageReady() {
   } catch { return null; }
 }
 
-export async function analyzeWithSample(sample, jpegDataUrl) {
-  const blob = dataUrlToBlob(jpegDataUrl);
+export async function analyzeWithSample(sample, jpegs) {
   const keys = METRICS.map((m) => m.key).join(', ');
   const prompt = PROMPT(today()) + `
 
 반드시 JSON 하나만 답하세요. 형식:
 {"note": "짧은 한국어 메모", "measurements": [{"date": "YYYY-MM-DD", "time": "HH:MM" 또는 null, ${METRICS.map((m) => `"${m.key}": 숫자 또는 null`).join(', ')}}]}
 (키 목록: date, time, ${keys})`;
-  const out = await sample.json(prompt, { images: [blob], modelTier: 'default' });
-  const list = Array.isArray(out?.measurements) ? out.measurements : [];
-  return { measurements: list.map(clean), note: typeof out?.note === 'string' ? out.note : '' };
+  const all = [], notes = [];
+  for (const part of chunks(jpegs, await maxImages(sample))) {
+    const out = await sample.json(prompt, { images: part.map(dataUrlToBlob), modelTier: 'default' });
+    if (Array.isArray(out?.measurements)) all.push(...out.measurements.map(clean));
+    if (typeof out?.note === 'string' && out.note) notes.push(out.note);
+  }
+  return { measurements: mergeMeasurements(all), note: notes.join(' ') };
 }
 
 /* ---------- OCR (API 키 없을 때) ---------- */
@@ -200,14 +246,19 @@ function loadTesseract() {
   return tessLoading;
 }
 
-export async function analyzeWithOCR(jpegDataUrl, onProgress) {
+export async function analyzeWithOCR(jpegs, onProgress) {
   const T = await loadTesseract();
+  let cur = 0;
   const worker = await T.createWorker('kor+eng', 1, {
-    logger: (m) => m.status === 'recognizing text' && onProgress?.(m.progress),
+    logger: (m) => m.status === 'recognizing text' && onProgress?.((cur + m.progress) / jpegs.length),
   });
-  const { data } = await worker.recognize(jpegDataUrl);
+  const list = [];
+  for (; cur < jpegs.length; cur++) {
+    const { data } = await worker.recognize(jpegs[cur]);
+    list.push(parseText(data.text));
+  }
   await worker.terminate();
-  return { measurements: [parseText(data.text)], note: '문자 인식(OCR) 결과입니다. 값이 맞는지 꼭 확인해 주세요.' };
+  return { measurements: mergeMeasurements(list), note: '문자 인식(OCR) 결과입니다. 값이 맞는지 꼭 확인해 주세요.' };
 }
 
 export function parseText(raw) {

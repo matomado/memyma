@@ -102,7 +102,7 @@ export function lineChart(points, opts = {}) {
 }
 
 /** 간단 막대그래프 (주간 섭취/소모 kcal) — bars: [{ x, a, b }] a=섭취, b=소모 */
-export function barChart(bars, { target = 0 } = {}) {
+export function barChart(bars, { target = 0, overColor = '#f0506e', targetLabel = null, unit = '' } = {}) {
   const W = 400, H = 200, top = 20, bottom = 168, padX = 20;
   const maxV = Math.max(target, ...bars.map((b) => Math.max(b.a, b.b)), 100) * 1.15;
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
@@ -118,8 +118,8 @@ export function barChart(bars, { target = 0 } = {}) {
     const bw = Math.min(16, slot / 3);
     if (b.a > 0) {
       const over = target && b.a > target;
-      svg.appendChild(el('rect', { x: cx - bw - 1, y: yAt(b.a), width: bw, height: bottom - yAt(b.a), rx: 4, fill: over ? '#f0506e' : '#2f3640' }));
-      svg.appendChild(el('text', { x: cx - bw / 2 - 1, y: yAt(b.a) - 4, class: 'xl', style: 'font-size:10px' }, Math.round(b.a)));
+      svg.appendChild(el('rect', { x: cx - bw - 1, y: yAt(b.a), width: bw, height: bottom - yAt(b.a), rx: 4, fill: over ? overColor : '#2f3640' }));
+      svg.appendChild(el('text', { x: cx - bw / 2 - 1, y: yAt(b.a) - 4, class: 'xl', style: 'font-size:10px' }, Math.round(b.a) + unit));
     }
     if (b.b > 0) {
       svg.appendChild(el('rect', { x: cx + 1, y: yAt(b.b), width: bw, height: bottom - yAt(b.b), rx: 4, fill: '#3bb98a' }));
@@ -129,7 +129,7 @@ export function barChart(bars, { target = 0 } = {}) {
   if (target) {
     const y = yAt(target);
     svg.appendChild(el('line', { x1: 0, x2: W, y1: y, y2: y, stroke: '#f0506e', 'stroke-dasharray': '4 4', 'stroke-width': 1.5 }));
-    svg.appendChild(el('text', { x: W - 4, y: y - 4, class: 'xl', style: 'text-anchor:end;fill:#f0506e;font-size:10px' }, `목표 ${target}`));
+    svg.appendChild(el('text', { x: W - 4, y: y - 4, class: 'xl', style: 'text-anchor:end;fill:#f0506e;font-size:10px' }, targetLabel || `목표 ${target}`));
   }
   return svg;
 }
