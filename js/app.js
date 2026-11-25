@@ -301,7 +301,20 @@ function eatenSeg(cur, onPick) {
   return seg;
 }
 
-const groupsOf = (it) => it.groups || db.foods.find((f) => f.id === it.foodId)?.groups || [];
+// 태그가 없는 음식은 이름으로 짐작 (밥·면 → 탄수, 닭·계란 → 단백, 채소·나물 → 섬유)
+const GUESS = {
+  carb: /밥|면|국수|라면|빵|떡|묵|감자|고구마|옥수수|시리얼|오트|곡물|파스타|누룽지|죽|김밥|토스트|베이글|과일|바나나|사과|귤|포도|딸기|아이스크림|과자|케이크/,
+  protein: /닭|계란|달걀|두부|고기|소고기|돼지|생선|연어|참치|고등어|새우|오징어|우유|요거트|요구르트|치즈|프로틴|단백질|콩|두유|햄|소시지|육포|스테이크/,
+  fiber: /식이섬유|채소|야채|나물|김치|샐러드|버섯|미역|다시마|해조|양배추|브로콜리|오이|당근|시금치|상추|파프리카|토마토|과일|사과|귤|딸기|현미|흑미|잡곡|귀리|오트/,
+};
+const guessGroups = (name) => Object.entries(GUESS).filter(([, re]) => re.test(name || '')).map(([g]) => g);
+const groupsOf = (it) => {
+  if (it.groups?.length) return it.groups;
+  const lib = db.foods.find((f) => f.id === it.foodId)?.groups;
+  if (lib?.length) return lib;
+  if (Array.isArray(it.groups) && it.groupsSet) return []; // 직접 '없음'으로 정한 경우
+  return guessGroups(it.name);
+};
 const GROUP_TIP = { carb: '밥·빵·고구마 같은 탄수화물', protein: '계란·두부·고기·생선 같은 단백질', fiber: '채소·나물·김치·과일 같은 섬유질' };
 function balanceRow(items) {
   const have = new Set(items.flatMap(groupsOf));
@@ -514,8 +527,11 @@ function editMealItem(date, slot, idx) {
     <label class="field"><span>수량 (배수)</span><input type="number" inputmode="decimal" step="0.5" value="${it.qty}"></label>
     <div class="field"><span>먹은 양 (남겼다면 골라 주세요)</span><div class="eat"></div></div>
     <p class="small muted kcal-now" style="margin-top:-4px"></p>
+    <div class="field"><span>영양 분류 (끼니 균형 체크)</span><div class="grp"></div></div>
     <label class="field"><span>이동</span><select>${MEAL_SLOTS.map(([k, l]) => `<option value="${k}" ${k === slot ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <button class="btn primary block">저장</button></div>`);
+  const groups = [...groupsOf(it)];
+  body.querySelector('.grp').appendChild(groupPills(groups));
   let eaten = it.eaten ?? 1;
   const qIn = body.querySelector('input');
   const now = () => { const q = parseFloat(qIn.value) || it.qty; body.querySelector('.kcal-now').textContent = `→ ${kc(it.kcal * q * eaten)} kcal로 기록돼요`; };
@@ -526,6 +542,10 @@ function editMealItem(date, slot, idx) {
     const q = parseFloat(qIn.value);
     if (q > 0) it.qty = q;
     if (eaten >= 1) delete it.eaten; else it.eaten = eaten;
+    it.groups = [...groups];
+    it.groupsSet = true;
+    const lib = db.foods.find((f) => f.id === it.foodId);
+    if (lib) lib.groups = [...groups]; // 다음부터도 같은 분류로
     const to = body.querySelector('select').value;
     if (to !== slot) { const m = ensureDayMeals(date); m[slot].splice(idx, 1); m[to].push(it); }
     save(); close(); rerender();
