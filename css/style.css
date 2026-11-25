@@ -307,3 +307,7 @@ textarea { padding: 10px 12px; }
 .tag.pt { background: #fff1e0; color: #c26a00; }
 .pt-dot { display: inline-block; font-size: 9px; font-weight: 800; color: #c26a00; background: #fff1e0; border-radius: 4px; padding: 0 3px; margin-left: 2px; letter-spacing: 0; }
 .chip.pt-chip { background: #fff1e0; color: #c26a00; }
+/* 버튼 글자는 줄바꿈하지 않기 (옆 글이 대신 줄바꿈) */
+.btn { white-space: nowrap; flex-shrink: 0; }
+.btn.block, .grid2 > .btn, .grid3 > .btn { white-space: normal; }
+.today-plan > span { min-width: 0; flex: 1; }
