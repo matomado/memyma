@@ -185,7 +185,7 @@ textarea { min-height: 64px; resize: vertical; }
 .chart-tip { display: flex; justify-content: flex-end; margin-bottom: 4px; min-height: 40px; }
 .chart-tip span { background: var(--soft); border-radius: 12px; padding: 7px 14px; font-size: 15px; color: var(--muted); }
 .chart-tip b { color: #2c3440; margin-left: 10px; font-size: 17px; }
-svg.chart { width: 100%; height: auto; display: block; overflow: visible; touch-action: pan-y; }
+svg.chart { width: 100%; height: auto; display: block; overflow: visible; touch-action: pan-x pan-y; }
 svg.chart .grid { stroke: #e9ebee; stroke-width: 1; }
 svg.chart .line { fill: none; stroke: #d5d9de; stroke-width: 2.5; }
 svg.chart .val { font-size: 13px; font-weight: 700; fill: #2c3440; text-anchor: middle; }
@@ -247,3 +247,7 @@ svg.chart .hit { fill: transparent; cursor: pointer; }
 .food-grid .empty { grid-column: 1 / -1; }
 .thumbs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 2px; }
 .thumbs img { height: 160px; width: auto; border-radius: 10px; flex: none; border: 1px solid var(--line); }
+.chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 6px; }
+.chart-scroll::-webkit-scrollbar { height: 5px; }
+.chart-scroll::-webkit-scrollbar-thumb { background: #c9ced6; border-radius: 99px; }
+.chart-hint { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }

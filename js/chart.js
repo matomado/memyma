@@ -45,7 +45,10 @@ export function lineChart(points, opts = {}) {
     return wrap;
   }
 
-  const W = 400, H = 250, padX = 34, top = 34, bottom = 210, axisY = 236;
+  // 점이 8개 넘으면 한 칸 간격을 고정하고 그래프를 옆으로 늘려서 가로 스크롤
+  const n0 = points.length, STEP = 47;
+  const W = n0 > 8 ? 34 * 2 + (n0 - 1) * STEP : 400;
+  const H = 250, padX = 34, top = 34, bottom = 210, axisY = 236;
   const vals = points.map((p) => p.value);
   let min = Math.min(...vals), max = Math.max(...vals);
   if (max - min < 1e-9) { min -= 1; max += 1; }
@@ -56,6 +59,7 @@ export function lineChart(points, opts = {}) {
   const yAt = (v) => bottom - ((v - min) / (max - min)) * (bottom - top);
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img' });
+  if (W > 400) svg.style.width = `${(W / 400) * 100}%`;
   for (let i = 0; i < 5; i++) {
     const y = top + ((bottom - top) * i) / 4;
     svg.appendChild(el('line', { x1: 0, x2: W, y1: y, y2: y, class: 'grid' }));
@@ -74,8 +78,8 @@ export function lineChart(points, opts = {}) {
   const dots = [];
   points.forEach((p, i) => {
     const [x, y] = pts[i];
-    svg.appendChild(el('text', { x, y: y - 14, class: 'val' }, fmt(p.value)));
-    const c = el('circle', { cx: x, cy: y, r: 7, fill: colorFor(p.value), stroke: '#fff', 'stroke-width': 2 });
+    svg.appendChild(el('text', { x, y: y - 11, class: 'val' }, fmt(p.value)));
+    const c = el('circle', { cx: x, cy: y, r: 4.5, fill: colorFor(p.value), stroke: '#fff', 'stroke-width': 1.5 });
     dots.push(c);
     svg.appendChild(c);
     svg.appendChild(el('text', { x, y: axisY, class: 'xl' }, p.x));
@@ -92,12 +96,21 @@ export function lineChart(points, opts = {}) {
   function select(i) {
     const x = xAt(i);
     sel.setAttribute('x1', x); sel.setAttribute('x2', x);
-    dots.forEach((d, j) => d.setAttribute('r', j === i ? 8.5 : 7));
+    dots.forEach((d, j) => d.setAttribute('r', j === i ? 6 : 4.5));
     const p = points[i];
     tip.innerHTML = `<span>${p.tip || p.x}<b>${fmt(p.value)}${unit}</b></span>`;
   }
   select(n - 1);
-  wrap.appendChild(svg);
+  if (W > 400) {
+    const sc = document.createElement('div');
+    sc.className = 'chart-scroll';
+    sc.appendChild(svg);
+    wrap.appendChild(sc);
+    wrap.appendChild(Object.assign(document.createElement('div'), { className: 'chart-hint', textContent: '← 옆으로 밀어서 이전 기록 보기' }));
+    requestAnimationFrame(() => { sc.scrollLeft = sc.scrollWidth; }); // 최신 기록부터
+  } else {
+    wrap.appendChild(svg);
+  }
   return wrap;
 }
 
