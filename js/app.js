@@ -14,6 +14,7 @@ import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, p
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
+import { evaluateDay, recommendMeal, weeklyReview } from './meal-coach.js';
 import { weeklyStats, swimPaces, comments, coachPrompt } from './workout-analysis.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
@@ -22,7 +23,7 @@ import {
 
 /* ================= 공통 유틸 ================= */
 const $view = document.getElementById('view');
-const ui = { open: {}, date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
+const ui = { open: {}, mc: {}, mcMode: 'eval', mcSlot: null, date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, d = 1) => (v == null || v === '' ? '-' : (+v).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'));
@@ -284,6 +285,8 @@ function renderMeals() {
     $view.appendChild(card);
   }
 
+  $view.appendChild(mealCoachCard(d));
+
   const lib = h(`<div class="card"><h2>자주 먹는 음식 <small>${db.foods.length}개</small></h2>
     <p class="small muted" style="margin:0 0 10px">자주 먹는 음식을 등록해 두면 탭 한 번으로 kcal가 자동 입력돼요.</p>
     <button class="btn block">음식 목록 관리</button></div>`);
@@ -326,6 +329,92 @@ function groupPills(cur) {
   const box = h(`<div class="pills" style="flex-wrap:wrap">${GROUPS.map(([g, l]) => `<button type="button" class="pill ${cur.includes(g) ? 'on' : ''}" data-g="${g}">${l}</button>`).join('')}</div>`);
   box.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { const g = b.dataset.g; const i = cur.indexOf(g); i >= 0 ? cur.splice(i, 1) : cur.push(g); b.classList.toggle('on'); }));
   return box;
+}
+
+/* ---------- 식단 코치 ---------- */
+function mealCoachCard(d) {
+  const isToday = d === today();
+  const mode = ui.mcMode;
+  const meals = dayMeals(d);
+  if (!ui.mcSlot || ui.mcSlotDate !== d) {
+    // 다음 끼니: 마지막으로 먹은 끼니 다음 빈 끼니, 없으면 간식
+    const main = ['breakfast', 'lunch', 'dinner'];
+    const lastIdx = Math.max(-1, ...main.map((k, i) => ((meals[k] || []).length ? i : -1)));
+    ui.mcSlot = main.slice(lastIdx + 1).find((k) => !(meals[k] || []).length) || 'snack';
+    ui.mcSlotDate = d;
+  }
+  const key = mode === 'week' ? 'week:' + today() : mode === 'rec' ? `rec:${d}:${ui.mcSlot}` : `eval:${d}`;
+  const res = ui.mc[key];
+  const card = h(`<div class="card"><h2>🤖 식단 코치</h2>
+    <div class="seg mc-mode">${[['eval', isToday ? '오늘 평가' : '이날 평가'], ['rec', '끼니 추천'], ['week', '7일 점검']].map(([m, l]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${mode === 'rec' ? `<div class="pills" style="margin-top:10px">${MEAL_SLOTS.map(([k, l]) => `<button type="button" class="pill ${ui.mcSlot === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="mc-out" style="margin-top:12px"></div>
+    <button class="btn primary block go">${res ? '다시 받기' : mode === 'eval' ? '평가 받기' : mode === 'rec' ? '추천 받기' : '점검 받기'}</button></div>`);
+  card.querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { ui.mcMode = b.dataset.m; rerender(); }));
+  card.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { ui.mcSlot = b.dataset.s; rerender(); }));
+  const out = card.querySelector('.mc-out');
+  const draw = (r) => {
+    out.innerHTML = '';
+    if (!r) {
+      out.appendChild(h(`<p class="small muted" style="margin:0">${mode === 'eval' ? '이날 먹은 걸 보고 점수와 잘한 점·고칠 점을 알려줘요.' : mode === 'rec' ? '남은 칼로리와 자주 먹는 음식을 보고 조합을 추천해요. 고르면 바로 추가돼요.' : '최근 7일 식단 패턴을 체중 변화와 함께 점검해요.'}</p>`));
+      return;
+    }
+    if (r.error) { out.appendChild(h(`<p class="small up" style="margin:0">${esc(r.error)}</p>`)); return; }
+    if (mode === 'eval') {
+      const c = r.score >= 80 ? '#3bb98a' : r.score >= 60 ? '#f2a33a' : '#f0506e';
+      out.appendChild(h(`<div class="row" style="gap:12px;align-items:center;margin-bottom:8px"><div class="score" style="border-color:${c};color:${c}">${r.score}</div><div class="grow small">${esc(r.summary)}</div></div>`));
+      r.good.forEach((t) => out.appendChild(h(`<div class="pt small"><span class="dot" style="background:#3bb98a"></span><div>${esc(t)}</div></div>`)));
+      r.fix.forEach((t) => out.appendChild(h(`<div class="pt small"><span class="dot" style="background:#f2a33a"></span><div>${esc(t)}</div></div>`)));
+    } else if (mode === 'rec') {
+      const slotLabel = MEAL_SLOTS.find(([k]) => k === ui.mcSlot)[1];
+      if (r.note) out.appendChild(h(`<p class="small muted" style="margin:0 0 8px">${esc(r.note)}</p>`));
+      if (!r.options.length) out.appendChild(h(`<p class="small up">추천을 만들지 못했어요. 다시 받아 주세요.</p>`));
+      r.options.forEach((o) => {
+        const tot = o.items.reduce((a, x) => a + x.kcal, 0);
+        const box = h(`<div class="rec-opt"><div class="row between"><b>${esc(o.title)}</b><span class="small" style="font-weight:700">${kc(tot)}kcal</span></div>
+          <div class="small muted" style="margin:4px 0 6px">${o.items.map((x) => `${esc(x.name)} ${nf(x.amount, 2)}${esc(x.unit)} ${kc(x.kcal)}`).join(' · ')}</div>
+          <div class="small" style="margin-bottom:8px">${esc(o.why)}</div><button class="btn sm">이 조합으로 ${slotLabel}에 추가</button></div>`);
+        box.querySelector('button').onclick = () => {
+          const arr = ensureDayMeals(d)[ui.mcSlot];
+          for (const x of o.items) arr.push({ id: uid(), foodId: x.foodId || uid(), name: x.name, amount: x.amount, unit: x.unit, kcal: x.kcal, qty: 1, groups: x.groups });
+          save(); delete ui.mc[key]; rerender(); toast(`${slotLabel}에 ${o.items.length}개 추가했어요 · ${kc(tot)}kcal`);
+        };
+        out.appendChild(box);
+      });
+    } else {
+      out.appendChild(h(`<div class="small" style="white-space:pre-wrap;line-height:1.65"></div>`)).textContent = r.text;
+    }
+  };
+  draw(res);
+  const btn = card.querySelector('.go');
+  btn.onclick = async () => {
+    const sample = await sampleReady();
+    const apiKey = db.settings.apiKey;
+    if (!sample && !apiKey) { draw({ error: window.claude?.use ? 'Claude 사용을 허용해야 쓸 수 있어요. 새로고침한 뒤 허용을 눌러 주세요.' : '이 기능은 claude.ai 링크로 열거나 설정에 API 키를 넣으면 쓸 수 있어요.' }); return; }
+    if (mode === 'eval' && !hasMeals(d)) { draw({ error: '이날 식단 기록이 없어요. 먼저 먹은 걸 기록해 주세요.' }); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Claude가 보는 중… (10~30초)';
+    const ai = { sample, apiKey };
+    try {
+      let r;
+      if (mode === 'eval') r = await evaluateDay(ai, d, groupsOf);
+      else if (mode === 'rec') r = await recommendMeal(ai, d, ui.mcSlot, groupsOf);
+      else {
+        const live = h(`<div class="small" style="white-space:pre-wrap;line-height:1.65"></div>`);
+        out.innerHTML = ''; out.appendChild(live);
+        r = { text: await weeklyReview(ai, groupsOf, (t) => (live.textContent = t)) };
+      }
+      ui.mc[key] = r;
+      draw(r);
+    } catch (err) {
+      console.error(err);
+      draw({ error: err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 눌러 주세요.' : err?.code === 'not_granted' ? 'Claude 사용을 허용해야 쓸 수 있어요.' : err?.code === 'invalid_json' ? '답을 제대로 받지 못했어요. 다시 눌러 주세요.' : '받지 못했어요: ' + (err?.message || err) });
+    }
+    btn.disabled = false;
+    btn.textContent = '다시 받기';
+  };
+  const evalRes = ui.mc[`eval:${d}`];
+  return foldify(card, 'meal-coach', evalRes && !evalRes.error ? `${isToday ? '오늘' : '이날'} ${evalRes.score}점 · 끼니 추천 · 7일 점검` : `${isToday ? '오늘' : '이날'} 평가 · 다음 끼니 추천 · 7일 점검`);
 }
 
 function foodUseCount() {

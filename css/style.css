@@ -321,3 +321,5 @@ details.fold[open] > summary .chev { transform: rotate(-90deg); }
 .fold-body { margin-top: 14px; }
 .sec-title { font-size: 13px; font-weight: 800; color: #6b7280; margin: 18px 4px 8px; }
 .sec-title:first-child { margin-top: 4px; }
+.score { flex: none; width: 52px; height: 52px; border-radius: 50%; border: 3px solid; display: grid; place-items: center; font-size: 19px; font-weight: 800; }
+.rec-opt { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 8px; background: #fff; }
