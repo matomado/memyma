@@ -4,7 +4,7 @@ import {
   MEAL_SLOTS, dayMeals, ensureDayMeals, itemKcal, intakeOf, hasMeals,
   workoutsOf, burnedOf, inbodySorted, inbodyOn, latestWeight,
   initCloud, isCloud, setSaveErrorHandler,
-  weightOn, weightSeries, GOAL, goalKcal, syncKcalTarget, fillFoodGroups, GROUPS,
+  weightOn, weightSeries, GOAL, goalKcal, syncKcalTarget, fillFoodGroups, GROUPS, sumMacros, MAC_KEYS, baseMac,
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
 import { bookings, bookingOn, addBooking, removeBooking, ptPlanOn, nextPt, pruneBookings, dowOf, ptDone } from './pt.js';
@@ -12,7 +12,7 @@ import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from
 import { EQUIPMENT, ALL_EQUIP, MY_GYM, identifyEquipment, myRoutine, machineRoutine, freeRoutine, optionsFor } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
-import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel } from './food-photo.js';
+import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel, fillMacros } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
 import { evaluateDay, recommendMeal, weeklyReview } from './meal-coach.js';
 import { weeklyStats, swimPaces, comments, coachPrompt } from './workout-analysis.js';
@@ -23,7 +23,7 @@ import {
 
 /* ================= 공통 유틸 ================= */
 const $view = document.getElementById('view');
-const ui = { open: {}, mc: {}, mcMode: 'eval', mcSlot: null, date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
+const ui = { open: (() => { try { return JSON.parse(localStorage.getItem('memyma.open') || '{}'); } catch { return {}; } })(), mc: {}, mcMode: 'eval', mcSlot: null, date: today(), calMode: 'week', calAnchor: today(), ibRange: 7, woRange: 4, coach: '', pending: null };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, d = 1) => (v == null || v === '' ? '-' : (+v).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'));
@@ -95,6 +95,8 @@ const TYPE = {
   pt: { label: 'PT', icon: '🧑‍🏫' },
 };
 
+const saveOpen = () => { try { localStorage.setItem('memyma.open', JSON.stringify(ui.open)); } catch { /* 저장 못 해도 괜찮음 */ } };
+
 /** 카드를 접을 수 있게: 제목 + 한 줄 요약만 보이고 누르면 펼침 (열림 상태는 기억) */
 function foldify(card, key, sub) {
   const d = document.createElement('details');
@@ -114,6 +116,7 @@ function foldify(card, key, sub) {
   d.append(sm, body);
   d.addEventListener('toggle', () => {
     ui.open[key] = d.open;
+    saveOpen();
     if (d.open) d.querySelectorAll('.chart-scroll').forEach((x) => (x.scrollLeft = x.scrollWidth));
   });
   return d;
@@ -254,15 +257,35 @@ function renderMeals() {
     <div class="row between"><b style="font-size:17px">총 ${kc(intake)} kcal</b><span class="small ${intake > target ? 'up' : 'muted'}">목표 ${kc(target)} · ${intake > target ? kc(intake - target) + ' 초과' : kc(target - intake) + ' 남음'}</span></div>
     <div class="bar ${intake > target ? 'over' : ''}" style="margin:8px 0"><i style="width:${Math.min(100, (intake / target) * 100)}%"></i></div>
     <div class="row between small muted">${MEAL_SLOTS.map(([k, l]) => `<span>${l} ${kc(slotK(k))}</span>`).join('')}</div>
+    <div class="macros day-mac"></div>
   </div>`));
+  const allItems = MEAL_SLOTS.flatMap(([k]) => meals[k] || []);
+  const dayM = sumMacros(allItems);
+  const dm = $view.lastElementChild.querySelector('.day-mac');
+  if (allItems.length) {
+    dm.innerHTML = (dayM.missing < allItems.length ? macroChips(dayM) : '') + (dayM.missing ? `<span class="small muted">${dayM.missing < allItems.length ? '· ' : ''}영양정보 없는 음식 ${dayM.missing}개</span>` : '');
+    if (dayM.missing) {
+      const fb = h(`<button class="btn sm ghost" style="margin-top:6px">🤖 영양정보 채우기</button>`);
+      fb.onclick = () => fillMissingMacros(allItems, fb);
+      dm.appendChild(fb);
+    }
+  } else dm.remove();
 
   for (const [k, label] of MEAL_SLOTS) {
     const items = meals[k] || [];
-    const card = h(`<div class="card meal-slot"><h3>${label} <span class="kc">${kc(slotK(k))} kcal</span></h3><ul class="list"></ul>
-      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-a="add">+ 추가</button><button class="btn sm ghost" data-a="copy">이전 ${label} 불러오기</button></div></div>`);
+    const sm = sumMacros(items);
+    const open = ui.open['slot-' + k] ?? false;
+    const card = h(`<details class="card meal-slot fold" ${open ? 'open' : ''}><summary class="fold-head">
+        <div class="grow"><div class="row between"><h3 style="margin:0">${label}</h3><span class="kc">${kc(slotK(k))} kcal</span></div>
+        ${items.length ? `<div class="macros">${sm.missing < items.length ? macroChips(sm) : ''}${sm.missing ? `<span class="small muted">${sm.missing < items.length ? `+${sm.missing}개 ` : ''}영양정보 없음</span>` : ''}</div>` : '<div class="fold-sub">기록 없음</div>'}</div>
+        <button type="button" class="plus" aria-label="${label} 추가">+</button><span class="chev" aria-hidden="true">›</span></summary>
+      <div class="fold-body" style="margin-top:6px"><ul class="list"></ul>
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-a="add">+ 추가</button><button class="btn sm ghost" data-a="copy">이전 ${label} 불러오기</button></div></div></details>`);
+    card.addEventListener('toggle', () => { ui.open['slot-' + k] = card.open; saveOpen(); });
+    card.querySelector('.plus').onclick = (e) => { e.preventDefault(); e.stopPropagation(); addFoodSheet(d, k, label); };
     const ul = card.querySelector('ul');
     if (!items.length) ul.appendChild(h(`<li class="muted small" style="border:0;padding:4px 0">기록 없음</li>`));
-    if (items.length && k !== 'snack') card.insertBefore(balanceRow(items), card.querySelector('.row'));
+    if (items.length && k !== 'snack') card.querySelector('.fold-body').insertBefore(balanceRow(items), card.querySelector('.fold-body > .row'));
     items.forEach((it, i) => {
       const li = h(`<li><div class="name"><b>${esc(it.name)}</b><span class="sub">${nf(it.amount * it.qty, 2)}${esc(it.unit)}${it.eaten < 1 ? ` · <span class="up">${eatenText(it.eaten)}</span>` : ''}</span></div><span class="kcal">${kc(itemKcal(it))}</span><button class="x" aria-label="삭제">×</button></li>`);
       li.querySelector('.name').onclick = () => editMealItem(d, k, i);
@@ -311,6 +334,30 @@ const GUESS = {
   fiber: /식이섬유|채소|야채|나물|김치|샐러드|버섯|미역|다시마|해조|양배추|브로콜리|오이|당근|시금치|상추|파프리카|토마토|과일|사과|귤|딸기|현미|흑미|잡곡|귀리|오트/,
 };
 const guessGroups = (name) => Object.entries(GUESS).filter(([, re]) => re.test(name || '')).map(([g]) => g);
+const macroChips = (m) => MAC_KEYS.map(([k, l]) => `<span class="mchip ${k}">${l} ${Math.round(m[k])}g</span>`).join('');
+async function fillMissingMacros(items, btn) {
+  const miss = items.filter((it) => !baseMac(it));
+  if (!miss.length) return;
+  const sample = await sampleReady();
+  const apiKey = db.settings.apiKey;
+  if (!sample && !apiKey) return toast('Claude를 쓸 수 있을 때만 채울 수 있어요. 음식을 눌러 직접 넣어 주세요.');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 채우는 중…';
+  try {
+    const macs = await fillMacros({ sample, apiKey, list: miss.map((it) => ({ name: it.name, amount: it.amount, unit: it.unit, kcal: it.kcal })) });
+    let n = 0;
+    miss.forEach((it, i) => {
+      if (!macs[i]) return;
+      it.mac = macs[i]; n++;
+      const f = db.foods.find((x) => x.id === it.foodId);
+      if (f && !f.mac && +f.amount === +it.amount && f.unit === it.unit) f.mac = macs[i]; // 다음부터도 쓰게
+    });
+    save(); rerender(); toast(`${n}개 음식의 영양정보를 채웠어요 (추정값)`);
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false; btn.textContent = '🤖 영양정보 채우기';
+    toast(err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 해 주세요.' : '채우지 못했어요. 다시 눌러 주세요.');
+  }
+}
 const groupsOf = (it) => {
   if (it.groups?.length) return it.groups;
   const lib = db.foods.find((f) => f.id === it.foodId)?.groups;
@@ -488,7 +535,7 @@ function addFoodSheet(date, slot, label) {
   body.querySelector('.lblbtn').onclick = () => {
     close();
     foodForm(null, rerender, { label: true, onSaved: (f) => {
-      ensureDayMeals(date)[slot].push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty: 1, groups: f.groups || [] });
+      ensureDayMeals(date)[slot].push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty: 1, groups: f.groups || [], ...(f.mac ? { mac: f.mac } : {}) });
       save(); rerender(); toast(`'${f.name}'을(를) ${label}에 추가했어요 (자주 먹는 음식에도 저장)`);
     } });
   };
@@ -512,7 +559,7 @@ function addFoodSheet(date, slot, label) {
     const arr = ensureDayMeals(date)[slot];
     for (const [id, qty] of sel) {
       const f = db.foods.find((x) => x.id === id);
-      arr.push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty, groups: f.groups || [] });
+      arr.push({ id: uid(), foodId: f.id, name: f.name, amount: f.amount, unit: f.unit, kcal: f.kcal, qty, groups: f.groups || [], ...(f.mac ? { mac: f.mac } : {}) });
     }
     save(); close(); rerender();
   };
@@ -559,7 +606,8 @@ async function aiMealSheet(date, slot, label, { jpegs, text }) {
       : '분석 실패: ' + esc(err?.message || err)}</p>`;
     return;
   }
-  const rows = res.items.map((it) => ({ ...it, use: true, per: it.amount > 0 ? it.kcal / it.amount : it.kcal }));
+  const rows = res.items.map((it) => ({ ...it, use: true, orig: it.amount, per: it.amount > 0 ? it.kcal / it.amount : it.kcal }));
+  const scaledMac = (r) => { if (!r.mac) return {}; const k = r.orig > 0 ? r.amount / r.orig : 1; return { mac: Object.fromEntries(Object.entries(r.mac).map(([a, v]) => [a, +(v * k).toFixed(1)])) }; };
   let eaten = 1;
   out.innerHTML = '';
   if (res.note) out.appendChild(h(`<p class="small muted" style="margin-top:0">${esc(res.note)}</p>`));
@@ -602,8 +650,8 @@ async function aiMealSheet(date, slot, label, { jpegs, text }) {
     const arr = ensureDayMeals(date)[slot];
     for (const r of used) {
       let foodId = r.foodId || uid();
-      if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false, groups: r.groups || [] });
-      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1, groups: r.groups || [], ...(eaten < 1 ? { eaten } : {}) });
+      if (!r.foodId && store) db.foods.push({ id: foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, fav: false, groups: r.groups || [], ...scaledMac(r) });
+      arr.push({ id: uid(), foodId, name: r.name.trim(), amount: r.amount, unit: r.unit || '인분', kcal: r.kcal, qty: 1, groups: r.groups || [], ...scaledMac(r), ...(eaten < 1 ? { eaten } : {}) });
     }
     save(); close(); rerender(); toast(`${label}에 ${used.length}개 추가했어요`);
   };
@@ -671,6 +719,7 @@ function foodForm(food, after, { onSaved, label } = {}) {
       <label class="field"><span>단위</span><input type="text" class="u" value="${esc(f.unit)}" list="units"></label>
       <label class="field"><span>kcal</span><input type="number" inputmode="decimal" class="k" value="${f.kcal}"></label>
     </div>
+    <div class="field"><span>영양정보 (기준량당 g, 선택)</span><div class="mac-in">${MAC_KEYS.map(([k, l]) => `<label><small>${{ carb: '탄수', protein: '단백', fat: '지방', fiber: '섬유' }[k]}</small><input type="number" inputmode="decimal" step="any" data-m="${k}" value="${f.mac?.[k] ?? ''}"></label>`).join('')}</div></div>
     <div class="field"><span>영양 분류 (끼니 균형 체크용)</span><div class="grp"></div></div>
     <datalist id="units"><option>g</option><option>개</option><option>공기</option><option>잔</option><option>ml</option><option>스쿱</option><option>접시</option><option>팩</option><option>봉</option></datalist>
     <p class="small muted" style="margin-top:0">예) 기준량 100, 단위 g, 109kcal → 식단에서 1.5 입력 시 150g · 164kcal</p>
@@ -696,6 +745,7 @@ function foodForm(food, after, { onSaved, label } = {}) {
       body.querySelector('.a').value = r.amount;
       body.querySelector('.u').value = r.unit;
       body.querySelector('.k').value = r.kcal;
+      if (r.mac) for (const [k] of MAC_KEYS) body.querySelector(`[data-m=${k}]`).value = r.mac[k] ?? '';
       groups = r.groups;
       const g = body.querySelector('.grp'); g.innerHTML = ''; g.appendChild(groupPills(groups));
       msg.innerHTML = `<span class="good">✓ 성분표를 읽었어요.</span> <span class="muted">${esc(r.note)}</span>`
@@ -713,6 +763,8 @@ function foodForm(food, after, { onSaved, label } = {}) {
     const kcal = parseFloat(body.querySelector('.k').value);
     if (!name || !(kcal >= 0)) return toast('이름과 kcal를 입력해 주세요');
     const rec = { name, amount: parseFloat(body.querySelector('.a').value) || 1, unit: body.querySelector('.u').value.trim() || '개', kcal, groups: [...groups] };
+    const mv = MAC_KEYS.map(([k]) => body.querySelector(`[data-m=${k}]`).value.trim());
+    if (mv.slice(0, 3).every((v) => v !== '' && isFinite(+v))) rec.mac = { carb: +mv[0], protein: +mv[1], fat: +mv[2], fiber: +(mv[3] || 0) };
     let saved = food;
     if (food) Object.assign(food, rec); else { saved = { id: uid(), fav: false, ...rec }; db.foods.push(saved); }
     save(); close(); onSaved ? onSaved(saved) : after();

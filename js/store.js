@@ -30,8 +30,20 @@ const DEFAULT_GROUPS = {
   '아메리카노': [], '김치': ['fiber'],
 };
 /** 예전에 만든 음식 목록에도 기본 분류를 채워 줌 */
+// 기본 음식 영양정보 (기준량당 g: 탄수 carb · 단백 protein · 지방 fat · 식이섬유 fiber)
+const DEFAULT_MAC = {
+  '현미밥': [66, 6, 1.6, 3.2], '흰쌀밥': [69, 5.7, 0.6, 0.6], '닭가슴살': [0, 23, 1.2, 0], '삶은 계란': [0.6, 6.3, 5.3, 0],
+  '고구마': [31, 1.4, 0.2, 2.5], '그릭요거트': [4, 9, 5, 0], '바나나': [24, 1.1, 0.3, 2.6], '사과': [28, 0.5, 0.3, 4.8],
+  '샐러드(드레싱 X)': [7, 2, 0.4, 3], '두부': [2, 9, 5, 0.5], '연어': [0, 20, 13, 0], '오트밀': [27, 5, 2.8, 4],
+  '우유': [10, 6.4, 7, 0], '프로틴 쉐이크': [3, 24, 1.5, 0.5], '아몬드': [2.5, 2.5, 6, 1.5], '아메리카노': [1.5, 0.5, 0, 0], '김치': [2.5, 1, 0.3, 1.2],
+};
+const toMac = (a) => ({ carb: a[0], protein: a[1], fat: a[2], fiber: a[3] });
+/** 예전에 만든 음식 목록에도 기본 분류·영양정보를 채워 줌 */
 export function fillFoodGroups() {
-  for (const f of state.foods) if (!Array.isArray(f.groups) && DEFAULT_GROUPS[f.name]) f.groups = DEFAULT_GROUPS[f.name];
+  for (const f of state.foods) {
+    if (!Array.isArray(f.groups) && DEFAULT_GROUPS[f.name]) f.groups = DEFAULT_GROUPS[f.name];
+    if (!f.mac && DEFAULT_MAC[f.name]) f.mac = toMac(DEFAULT_MAC[f.name]);
+  }
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -53,7 +65,7 @@ function defaults() {
       equipment: [],    // 우리 헬스장 기구
       pt: { total: null, done0: 0, days: [], time: '', bookings: [] }, // PT 등록 횟수·이미 받은 횟수·고정 요일·기본 시간·날짜별 예약
     },
-    foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false, groups: DEFAULT_GROUPS[name] || [] })),
+    foods: DEFAULT_FOODS.map(([name, amount, unit, kcal]) => ({ id: uid(), name, amount, unit, kcal, fav: false, groups: DEFAULT_GROUPS[name] || [], ...(DEFAULT_MAC[name] ? { mac: toMac(DEFAULT_MAC[name]) } : {}) })),
     meals: {},     // { 'YYYY-MM-DD': { breakfast: [...], lunch: [...], dinner: [...], snack: [...] } }
     workouts: [],  // [{ id, date, type, ... }]
     inbody: [],    // [{ id, date, time, weight, smm, bfm, pbf, ... }]
@@ -227,6 +239,25 @@ export function ensureDayMeals(date) {
   return state.meals[date];
 }
 export const itemKcal = (it) => Math.round(it.kcal * it.qty * (it.eaten ?? 1)); // eaten: 먹은 비율(남긴 경우)
+export const MAC_KEYS = [['carb', '탄'], ['protein', '단'], ['fat', '지'], ['fiber', '섬']];
+/** 음식 한 줄의 기준량당 영양정보 (없으면 같은 기준량의 자주 먹는 음식 것) */
+export function baseMac(it) {
+  if (it.mac) return it.mac;
+  const f = state.foods.find((x) => x.id === it.foodId);
+  if (f?.mac && +f.amount === +it.amount && f.unit === it.unit) return f.mac;
+  return null;
+}
+/** 여러 음식의 탄단지섬 합계 (먹은 양 반영) + 정보 없는 음식 수 */
+export function sumMacros(items) {
+  const t = { carb: 0, protein: 0, fat: 0, fiber: 0, missing: 0 };
+  for (const it of items) {
+    const m = baseMac(it);
+    if (!m) { t.missing++; continue; }
+    const k = it.qty * (it.eaten ?? 1);
+    for (const [key] of MAC_KEYS) t[key] += (+m[key] || 0) * k;
+  }
+  return t;
+}
 export function intakeOf(date) {
   const m = state.meals[date];
   if (!m) return 0;

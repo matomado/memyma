@@ -12,7 +12,7 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['foodId', 'name', 'amount', 'unit', 'kcal', 'groups'],
+        required: ['foodId', 'name', 'amount', 'unit', 'kcal', 'groups', 'carb', 'protein', 'fat', 'fiber'],
         properties: {
           foodId: { anyOf: [{ type: 'string' }, { type: 'null' }], description: '등록된 음식과 같으면 그 id, 아니면 null' },
           name: { type: 'string' },
@@ -20,6 +20,7 @@ const SCHEMA = {
           unit: { type: 'string' },
           kcal: { type: 'number', description: '사진 속 양 전체의 kcal' },
           groups: { type: 'array', items: { type: 'string', enum: ['carb', 'protein', 'fiber'] }, description: '주요 영양 분류' },
+          carb: { anyOf: [{ type: 'number' }, { type: 'null' }] }, protein: { anyOf: [{ type: 'number' }, { type: 'null' }] }, fat: { anyOf: [{ type: 'number' }, { type: 'null' }] }, fiber: { anyOf: [{ type: 'number' }, { type: 'null' }] },
         },
       },
     },
@@ -35,6 +36,7 @@ function prompt(foods) {
 ${lib || '(등록된 음식 없음)'}
 - 소스·드레싱·기름처럼 칼로리에 영향이 큰 것이 보이면 따로 항목으로 넣으세요.
 - groups: 그 음식이 끼니에서 맡는 주요 역할. carb(탄수화물: 밥·빵·면·감자·과일), protein(단백질: 고기·생선·계란·두부·콩·유제품), fiber(섬유질: 채소·나물·김치·해조류·과일). 여러 개 가능.
+- carb·protein·fat·fiber: 그 양 전체의 탄수화물·단백질·지방·식이섬유 g(한국 일반 기준 추정, 소수점 한 자리).
 - 음식 사진이 아니면 items 를 빈 배열로 두고 note 에 이유를 쓰세요.`;
 }
 
@@ -50,13 +52,14 @@ function textPrompt(text, foods) {
 - 아래 자주 먹는 음식 목록과 같은 음식이면 foodId 에 그 id 를 넣고, unit 은 목록과 같은 단위로, kcal 는 목록의 kcal 를 양에 비례해 계산하세요. 아니면 foodId 는 null.
 ${lib || '(등록된 음식 없음)'}
 - groups: carb(탄수화물: 밥·빵·면·감자·과일), protein(단백질: 고기·생선·계란·두부·콩·유제품), fiber(섬유질: 채소·나물·김치·해조류·과일) 중 해당하는 것들.
+- carb·protein·fat·fiber: 그 양 전체의 탄수화물·단백질·지방·식이섬유 g(소수점 한 자리).
 - note 에는 기준(예: "반찬 1회 제공량 기준")을 짧게 적으세요. 음식이 아니면 items 를 빈 배열로 두세요.`;
 }
 
 const JSON_FORMAT = `
 
 반드시 JSON 하나만 답하세요. 형식:
-{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자, "groups": ["carb"|"protein"|"fiber"]}]}`;
+{"note": "짧은 메모", "items": [{"foodId": "id 또는 null", "name": "음식 이름", "amount": 숫자, "unit": "단위", "kcal": 숫자, "groups": ["carb"|"protein"|"fiber"], "carb": 숫자, "protein": 숫자, "fat": 숫자, "fiber": 숫자}]}`;
 
 export async function analyzeFoodPhoto({ sample, apiKey, jpegs, foods }) {
   const items = [], notes = [];
@@ -78,6 +81,13 @@ export async function analyzeFoodText({ sample, apiKey, text, foods }) {
   return tidy(out, foods);
 }
 
+/** {carb, protein, fat, fiber} 가 다 숫자면 mac 으로 */
+export function macOf(o) {
+  const v = ['carb', 'protein', 'fat', 'fiber'].map((k) => o?.[k] ?? (k === 'carb' ? o?.carbs : undefined));
+  if (v.some((x) => x == null || x === '' || !isFinite(+x))) return {};
+  return { mac: { carb: +(+v[0]).toFixed(1), protein: +(+v[1]).toFixed(1), fat: +(+v[2]).toFixed(1), fiber: +(+v[3]).toFixed(1) } };
+}
+
 function tidy(out, foods) {
   const ids = new Set(foods.map((f) => f.id));
   const items = (Array.isArray(out?.items) ? out.items : [])
@@ -89,6 +99,7 @@ function tidy(out, foods) {
       unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim().slice(0, 12) : '인분',
       kcal: Math.max(0, Math.round(+it.kcal)),
       groups: Array.isArray(it.groups) ? it.groups.filter((g) => ['carb', 'protein', 'fiber'].includes(g)) : [],
+      ...macOf(it),
     }));
   return { items, note: typeof out?.note === 'string' ? out.note : '' };
 }
@@ -148,6 +159,22 @@ export async function analyzeLabel({ sample, apiKey, jpegs }) {
     amount: +out.amount > 0 ? +out.amount : 1,
     unit: String(out.unit || '개').trim().slice(0, 24) || '개',
     kcal, groups,
+    ...(m.carbs != null && m.protein != null && m.fat != null ? { mac: { carb: m.carbs, protein: m.protein, fat: m.fat, fiber: m.fiber ?? 0 } } : {}),
     note: typeof out.note === 'string' ? out.note : '',
   };
+}
+
+
+/* ---------- 영양정보 없는 음식들 한꺼번에 채우기 ---------- */
+const FILL_SCHEMA = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['i', 'carb', 'protein', 'fat', 'fiber'], properties: { i: { type: 'number' }, carb: { type: 'number' }, protein: { type: 'number' }, fat: { type: 'number' }, fiber: { type: 'number' } } } } } };
+/** list: [{name, amount, unit, kcal}] → 같은 순서의 mac 배열 (모르면 null) */
+export async function fillMacros({ sample, apiKey, list }) {
+  const prompt = `아래 음식들의 탄수화물·단백질·지방·식이섬유(g)를 적힌 양 기준으로 추정하세요. 한국 일반 기준(식약처 영양성분 DB 수준)으로, 적힌 kcal 와 대략 맞게(탄수×4+단백×4+지방×9 ≈ kcal). 소수점 한 자리.
+${list.map((x, i) => `${i}. ${x.name} ${x.amount}${x.unit} (${x.kcal}kcal)`).join('\n')}`;
+  const out = sample
+    ? await sample.json(prompt + '\n\n반드시 JSON 하나만 답하세요. 형식: {"items": [{"i": 번호, "carb": 숫자, "protein": 숫자, "fat": 숫자, "fiber": 숫자}]}', { modelTier: 'default' })
+    : await claudeImageJSON(null, apiKey, prompt, FILL_SCHEMA);
+  const res = list.map(() => null);
+  for (const r of out?.items || []) if (Number.isInteger(+r.i) && res[+r.i] === null) res[+r.i] = macOf(r).mac || null;
+  return res;
 }

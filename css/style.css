@@ -323,3 +323,16 @@ details.fold[open] > summary .chev { transform: rotate(-90deg); }
 .sec-title:first-child { margin-top: 4px; }
 .score { flex: none; width: 52px; height: 52px; border-radius: 50%; border: 3px solid; display: grid; place-items: center; font-size: 19px; font-weight: 800; }
 .rec-opt { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 8px; background: #fff; }
+/* ---------- 탄단지섬 ---------- */
+.macros { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 6px; }
+.mchip { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--soft); color: #4b5563; font-variant-numeric: tabular-nums; }
+.mchip.carb { background: #fff4e0; color: #b26b00; }
+.mchip.protein { background: #fdeaf0; color: #c23a5e; }
+.mchip.fat { background: #eef2ff; color: #4a5bd1; }
+.mchip.fiber { background: #e5f7ef; color: #25976d; }
+.meal-slot.fold > summary h3 { font-size: 16px; }
+.meal-slot.fold > summary .kc { font-size: 14px; color: var(--muted); font-weight: 600; }
+.mac-in { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mac-in label small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.mac-in input { height: 40px; padding: 0 8px; }
+.fold-head .plus { flex: none; width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 20px; line-height: 1; cursor: pointer; color: var(--accent); }
