@@ -23,6 +23,7 @@
   --mustard:#f0b93a; --mustard-soft:#3a3018; --danger:#ff8a80; --danger-soft:#3d2220; color-scheme:dark}
 
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
 .wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
@@ -126,6 +127,12 @@ label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--mut
 .hint.ok{color:var(--accent)}
 
 .shelf .row{grid-template-columns:minmax(0,1fr) auto}
+.fold{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:0;text-align:left}
+.fold:hover h2{color:var(--accent)}
+.chev{display:inline-block;transition:transform .2s;color:var(--muted)}
+.fold[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+.reco .why{font-size:.82rem;color:var(--muted)}
+.reco .est{font-family:var(--mono);font-size:.78rem;color:var(--mustard);font-weight:600}
 .count{font-family:var(--mono);font-size:.75rem;color:var(--accent);font-weight:600}
 
 .notice{background:var(--mustard-soft);color:var(--fg);border-radius:8px;padding:10px 14px;font-size:.88rem}
@@ -203,8 +210,21 @@ textarea.copy{width:100%;height:160px;font-family:var(--mono);font-size:.8rem;bo
         </form>
       </section>
 
+      <section class="panel" id="recoPanel" hidden>
+        <div class="phead"><h2>간식 추천</h2><span class="muted small">지난 주문과 남은 예산을 보고 골라줘요</span></div>
+        <form id="recoForm" autocomplete="off">
+          <label>원하는 느낌 (선택) <input class="field" id="recoMood" placeholder="예: 건강한 거, 짭짤한 거, 겨울 간식"></label>
+          <button class="btn primary" type="submit" id="recoBtn" style="justify-content:center">추천 받기</button>
+        </form>
+        <div class="hint" id="recoHint"></div>
+        <div class="list" id="recoList"></div>
+      </section>
+
       <section class="panel flat shelf">
-        <div class="phead"><h2>자주 산 간식</h2><span class="muted small">지난달 기록에서 바로 담기</span></div>
+        <div class="phead">
+          <button class="fold" id="shelfToggle" aria-expanded="true" aria-controls="shelfBody"><span class="chev" aria-hidden="true">▾</span><h2>자주 산 간식</h2></button>
+          <span class="muted small" id="shelfSub">지난달 기록에서 바로 담기</span>
+        </div>
         <div class="list" id="shelf"></div>
       </section>
     </div>
@@ -339,6 +359,7 @@ textarea.copy{width:100%;height:160px;font-family:var(--mono);font-size:.8rem;bo
     if (it.by) bits.push(`<span data-uid="${esc(it.by)}">…</span>`);
     else if (it.src === "xlsx") bits.push("엑셀에서 가져옴");
     if (it.price) bits.push(`<span class="num">${won(it.price)}원 × ${it.qty || 1}</span>`);
+    else if (it.note) bits.push(esc(String(it.note).slice(0, 40)));
     const seen = history().get(keyOf(it));
     if (seen && seen.months.filter(m => m !== it.month).length) bits.push(`이전에 ${seen.months.filter(m => m !== it.month).length}번 주문`);
     return bits.join(" · ");
@@ -422,6 +443,9 @@ textarea.copy{width:100%;height:160px;font-family:var(--mono);font-size:.8rem;bo
       .sort((a, b) => b.past.length - a.past.length || b.last.month.localeCompare(a.last.month))
       .slice(0, 12);
     const el = $("shelf"); el.innerHTML = "";
+    el.hidden = shelfClosed;
+    $("shelfToggle").setAttribute("aria-expanded", String(!shelfClosed));
+    $("shelfSub").textContent = shelfClosed ? `${rows.length}개 접힘` : "지난달 기록에서 바로 담기";
     if (!rows.length) { el.innerHTML = `<div class="empty">${state.loaded ? "주문 기록이 쌓이면 여기에 자주 산 간식이 모여요." : "불러오는 중…"}</div>`; return; }
     for (const h of rows) {
       const it = h.last, r = document.createElement("div"); r.className = "row";
@@ -513,11 +537,83 @@ textarea.copy{width:100%;height:160px;font-family:var(--mono);font-size:.8rem;bo
     catch (e) { if (e && e.code !== "cancelled") toast("파일을 저장하지 못했어요"); }
   };
 
+  // ---------- fold: frequently bought ----------
+  let shelfClosed = false;
+  try { shelfClosed = localStorage.getItem("snack.shelfClosed") === "1"; } catch {}
+  $("shelfToggle").onclick = () => {
+    shelfClosed = !shelfClosed;
+    try { localStorage.setItem("snack.shelfClosed", shelfClosed ? "1" : "0"); } catch {}
+    renderShelf(state.canWrite && !!db && !monthDoc(state.month).ordered);
+  };
+
+  // ---------- recommendations (asks Claude) ----------
+  let sample = null, recoAbort = null;
+  function recoPrompt(mood) {
+    const k = state.month, md = monthDoc(k), budget = md.budget ?? DEFAULT_BUDGET;
+    const cart = itemsOf(k, "cart"), wish = itemsOf(k, "wish");
+    const remain = budget - total(cart);
+    const past = [...history().values()].map(h => `${h.last.name} (${h.months.length}회, 최근 ${h.last.price || "?"}원)`);
+    return [
+      "당신은 한국 회사 부서의 월간 간식 담당자를 돕습니다. 간식은 쿠팡에서 주문하고, 월 예산은 " + budget + "원입니다.",
+      "지금까지 주문한 간식: " + (past.join(", ") || "없음"),
+      "이번 달 장바구니: " + (cart.map(i => i.name).join(", ") || "비어 있음") + ` (남은 예산 ${remain}원)`,
+      "이번 달 신청함: " + (wish.map(i => i.name).join(", ") || "없음"),
+      mood ? "원하는 느낌: " + mood : "",
+      "",
+      "조건:",
+      "- 쿠팡에서 실제로 파는, 여러 명이 나눠 먹기 좋은 대용량/박스 단위 상품을 5개 추천하세요.",
+      "- 이미 장바구니나 신청함에 있는 것은 빼고, 자주 산 것과 비슷하지만 새로운 것 3개, 분위기를 바꿀 새로운 것 2개 정도로 섞으세요.",
+      "- 가능하면 하나하나가 남은 예산 안에 들어오게 하고, 남은 예산이 적으면 저렴한 것을 고르세요.",
+      "- estPrice는 쿠팡 기준 대략적인 원화 가격(정수)입니다. 정확하지 않아도 되지만 현실적으로 쓰세요.",
+      "- query는 쿠팡 검색창에 넣을 짧은 검색어입니다.",
+      "- why는 한 문장, 25자 안쪽, 존댓말 없이 간결하게.",
+      "",
+      'JSON만 답하세요: {"items":[{"name":"상품명 (구성)","why":"이유","estPrice":9000,"query":"검색어"}]}'
+    ].filter(Boolean).join("\n");
+  }
+  function renderReco(items) {
+    const list = $("recoList"); list.innerHTML = "";
+    const editable = state.canWrite && !!db && !monthDoc(state.month).ordered;
+    for (const it of items) {
+      const name = String(it.name || "").slice(0, 80), q = String(it.query || it.name || "").slice(0, 60);
+      const est = Number.isFinite(+it.estPrice) && +it.estPrice > 0 ? Math.round(+it.estPrice) : null;
+      const searchUrl = "https://www.coupang.com/np/search?q=" + encodeURIComponent(q);
+      const r = document.createElement("div"); r.className = "row reco";
+      r.innerHTML = `<div><div class="name"><a href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(name)} ↗</a></div>
+        <div class="why">${esc(String(it.why || "").slice(0, 80))}</div>
+        ${est ? `<div class="est">예상 약 ${won(est)}원</div>` : ""}</div>
+        <div class="right">${editable ? '<button class="btn" data-a="up">신청함에 올리기</button>' : ""}</div>`;
+      const b = r.querySelector("[data-a=up]");
+      if (b) b.onclick = () => { b.disabled = true; b.textContent = "올렸어요"; addItem({ month: state.month, name, qty: 1, price: null, url: "", pid: null, status: "wish", note: est ? "추천 예상가 " + est : "" }).then(() => toast("신청함에 올렸어요 · 쿠팡에서 실제 가격을 확인해 입력하세요")); };
+      list.append(r);
+    }
+  }
+  $("recoForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!sample) return;
+    if (recoAbort) recoAbort.abort();
+    recoAbort = new AbortController();
+    const btn = $("recoBtn"), hint = $("recoHint");
+    btn.disabled = true; btn.textContent = "고르는 중…"; hint.className = "hint"; hint.textContent = "";
+    try {
+      const out = await sample.json(recoPrompt($("recoMood").value.trim().slice(0, 100)), { modelTier: "quick", signal: recoAbort.signal, cache: false });
+      const items = Array.isArray(out?.items) ? out.items.slice(0, 6) : [];
+      renderReco(items);
+      hint.textContent = items.length ? "가격은 예상치예요. 이름을 누르면 쿠팡 검색 결과가 열려요." : "추천을 만들지 못했어요. 다시 눌러주세요.";
+    } catch (err) {
+      const c = err && err.code;
+      if (c === "cancelled") return;
+      if (c === "not_granted") { $("recoPanel").hidden = true; return; }
+      hint.textContent = c === "rate_limited" ? "요청이 많아요. 잠시 후 다시 눌러주세요." : "추천을 받지 못했어요. 다시 눌러주세요.";
+    } finally { btn.disabled = false; btn.textContent = "다시 추천 받기"; }
+  });
+
   // ---------- boot ----------
   render();
   (async () => {
     const use = n => (window.claude && window.claude.use) ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
-    [db, user, downloads] = await Promise.all([use("db"), use("user"), use("downloads")]);
+    [db, user, downloads, sample] = await Promise.all([use("db"), use("user"), use("downloads"), use("sample")]);
+    $("recoPanel").hidden = !sample;
     if (!db) { state.loaded = true; state.canWrite = false; notice("로그인하면 부서 장바구니를 보고 함께 편집할 수 있어요."); render(); return; }
     if (user) {
       state.uid = await user.id();
