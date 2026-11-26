@@ -1271,8 +1271,34 @@ async function watchSheet(jpegs) {
     return;
   }
   if (res.workouts.length === 1) {
-    // 하나면 바로 입력 화면으로 (확인 후 저장)
     const x = res.workouts[0];
+    const date = x.date || ui.date;
+    // 같은 날 이미 적어 둔 기록(PT·웨이트 등)이 있으면 합칠지 물어봄 → 같은 운동이 두 번 들어가지 않게
+    const strength = (t) => t === 'weight' || t === 'pt';
+    const cands = workoutsOf(date).filter((w) => w.source !== 'watch' && !w.watch && (w.type === x.type || (strength(x.type) && strength(w.type))));
+    if (cands.length) {
+      out.innerHTML = '';
+      out.appendChild(h(`<p class="small" style="margin-top:0">워치 기록: <b>${esc(x.title || TYPE[x.type].label)}</b> ${x.duration ? x.duration + '분' : ''}${x.kcal != null ? ` · 활동 ${x.kcal}kcal` : ''}${x.avgHr ? ` · 평균 심박 ${x.avgHr}` : ''}</p>
+        <p class="small muted">${fmtShort(date)}에 이미 적어 둔 운동이 있어요. 같은 운동이면 합쳐야 칼로리가 두 번 들어가지 않아요.</p>`));
+      cands.forEach((w) => {
+        const b = h(`<button class="btn primary block" style="margin-bottom:8px">${TYPE[w.type].icon} ${TYPE[w.type].label} ${esc(workoutDetail(w).split(' · ').slice(0, 2).join(' · '))} 기록에 합치기</button>`);
+        b.onclick = () => {
+          const note = `애플워치: ${x.title || TYPE[x.type].label}${x.duration ? ` ${x.duration}분` : ''}${x.kcal != null ? ` · 활동 ${x.kcal}kcal` : ''}${x.avgHr ? ` · 평균 심박 ${x.avgHr}` : ''}`;
+          if (x.kcal != null) { w.kcal = x.kcal; w.kcalManual = true; }
+          if (x.avgHr) w.avgHr = x.avgHr;
+          if (!w.duration && x.duration) w.duration = x.duration;
+          w.watch = { title: x.title, duration: x.duration, kcal: x.kcal, avgHr: x.avgHr };
+          w.memo = [w.memo, note].filter(Boolean).join('\n');
+          save(); close(); rerender(); toast('기존 기록에 워치 정보를 합쳤어요');
+        };
+        out.appendChild(b);
+      });
+      const sep = h(`<button class="btn block">새 운동으로 따로 추가</button>`);
+      sep.onclick = () => { close(); workoutForm(null, x.type, toPreset(x)); };
+      out.appendChild(sep);
+      return;
+    }
+    // 없으면 바로 입력 화면으로 (확인 후 저장)
     close();
     workoutForm(null, x.type, toPreset(x));
     return;
