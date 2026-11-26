@@ -1283,13 +1283,30 @@ async function watchSheet(jpegs) {
       cands.forEach((w) => {
         const b = h(`<button class="btn primary block" style="margin-bottom:8px">${TYPE[w.type].icon} ${TYPE[w.type].label} ${esc(workoutDetail(w).split(' · ').slice(0, 2).join(' · '))} 기록에 합치기</button>`);
         b.onclick = () => {
-          const note = `애플워치: ${x.title || TYPE[x.type].label}${x.duration ? ` ${x.duration}분` : ''}${x.kcal != null ? ` · 활동 ${x.kcal}kcal` : ''}${x.avgHr ? ` · 평균 심박 ${x.avgHr}` : ''}`;
-          if (x.kcal != null) { w.kcal = x.kcal; w.kcalManual = true; }
-          if (x.avgHr) w.avgHr = x.avgHr;
-          if (!w.duration && x.duration) w.duration = x.duration;
-          w.watch = { title: x.title, duration: x.duration, kcal: x.kcal, avgHr: x.avgHr };
-          w.memo = [w.memo, note].filter(Boolean).join('\n');
-          save(); close(); rerender(); toast('기존 기록에 워치 정보를 합쳤어요');
+          const merge = (kcal, how) => {
+            const note = `애플워치: ${x.title || TYPE[x.type].label}${x.duration ? ` ${x.duration}분` : ''}${x.kcal != null ? ` · 활동 ${x.kcal}kcal` : ''}${x.avgHr ? ` · 평균 심박 ${x.avgHr}` : ''}${how ? ` (${how})` : ''}`;
+            if (kcal != null) { w.kcal = kcal; w.kcalManual = true; }
+            if (x.avgHr) w.avgHr = x.avgHr;
+            if (!w.duration && x.duration) w.duration = x.duration;
+            w.watch = { title: x.title, duration: x.duration, kcal: x.kcal, avgHr: x.avgHr };
+            w.memo = [w.memo, note].filter(Boolean).join('\n');
+            save(); close(); rerender(); toast(`합쳤어요${kcal != null ? ` · ${kcal}kcal` : ''}`);
+          };
+          if (x.kcal == null) return merge(null, '');
+          // 칼로리를 어떻게 넣을지: 워치가 수업 일부만 쟀을 수 있어서
+          const scaled = x.duration && w.duration > x.duration ? Math.round((x.kcal / x.duration) * w.duration) : null;
+          out.innerHTML = '';
+          out.appendChild(h(`<p class="small" style="margin-top:0"><b>칼로리는 어떻게 넣을까요?</b><br><span class="muted">워치 ${x.duration ? x.duration + '분' : ''} · 활동 ${x.kcal}kcal / 적어 둔 기록 ${w.duration ? w.duration + '분' : ''} · ${w.kcal || 0}kcal</span></p>`));
+          const opts = [
+            ...(scaled ? [[`중간부터 기록했어요 → 시간 비율로 늘리기 (${scaled}kcal)`, scaled, `${w.duration}분 기준으로 보정`, true]] : []),
+            [`수업 전체를 기록했어요 → 워치 값 그대로 (${x.kcal}kcal)`, x.kcal, '', !scaled],
+            [`kcal은 그대로 두기 (${w.kcal || 0}kcal) → 심박·메모만 추가`, null, ''],
+          ];
+          opts.forEach(([label, kcal, how, primary]) => {
+            const ob = h(`<button class="btn block ${primary ? 'primary' : ''}" style="margin-bottom:8px;white-space:normal;text-align:left">${esc(label)}</button>`);
+            ob.onclick = () => merge(kcal, how);
+            out.appendChild(ob);
+          });
         };
         out.appendChild(b);
       });
