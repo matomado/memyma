@@ -8,7 +8,7 @@ import {
 } from './store.js';
 import { weightFeedback, goalLabel } from './weight.js';
 import { bookings, bookingOn, addBooking, removeBooking, ptPlanOn, nextPt, pruneBookings, dowOf, ptDone } from './pt.js';
-import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom } from './plan.js';
+import { DOWS, ACTS, defaultPrefs, generatePlan, templatePlan, presetFrom, weekSignature } from './plan.js';
 import { EQUIPMENT, ALL_EQUIP, MY_GYM, identifyEquipment, myRoutine, machineRoutine, freeRoutine, optionsFor } from './gym.js';
 import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, progressHint, levelUps } from './routine.js';
 import { lineChart, barChart } from './chart.js';
@@ -1134,6 +1134,14 @@ function planCard() {
     return card;
   }
   card.querySelector('.re').onclick = planPrefsSheet;
+  // 추천 이후 새 운동 기록이 생겼으면 남은 요일 다시 받기
+  const changed = plan.basedOn != null ? plan.basedOn !== weekSignature()
+    : plan.days.some((d) => d.date >= plan.createdAt && workoutsOf(d.date).length);
+  if (changed && plan.days.some((d) => d.date > today())) {
+    const bn = h(`<div class="today-plan" style="margin-bottom:10px"><span>🔄 추천 뒤에 새 운동 기록이 생겼어요. 남은 요일을 기록에 맞춰 다시 짤까요?</span><button class="btn sm primary">남은 요일 다시 받기</button></div>`);
+    bn.querySelector('button').onclick = (e) => regenPlan(e.currentTarget);
+    card.appendChild(bn);
+  }
   if (plan.summary) card.appendChild(h(`<p class="small" style="margin-top:0">${esc(plan.summary)}</p>`));
   const list = h(`<div class="plan"></div>`);
   for (const d of plan.days) {
@@ -1157,6 +1165,23 @@ function planCard() {
   if (plan.tips?.length) card.appendChild(h(`<div class="small" style="margin-top:10px">${plan.tips.map((t) => `<div>💡 ${esc(t)}</div>`).join('')}</div>`));
   if (plan.source === 'template') card.appendChild(h(`<p class="small muted">기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아요.</p>`));
   return card;
+}
+
+/** 지난번 조건 그대로 루틴 다시 받기 */
+async function regenPlan(btn) {
+  const prefs = { ...defaultPrefs(), ...(db.settings.planPrefs || {}) };
+  const sample = await sampleReady();
+  const apiKey = db.settings.apiKey;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 다시 짜는 중…';
+  try {
+    db.plan = sample || apiKey ? await generatePlan({ sample, apiKey, prefs }) : templatePlan(prefs);
+    save(); rerender(); toast('기록에 맞춰 남은 요일을 다시 짰어요');
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false; btn.textContent = '다시 시도';
+    toast(err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 눌러 주세요.' : '다시 받지 못했어요. 다시 눌러 주세요.');
+  }
 }
 
 async function planPrefsSheet() {

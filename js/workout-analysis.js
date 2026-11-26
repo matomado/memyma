@@ -88,6 +88,8 @@ export function recordSummary(n = 28) {
     const ws = workoutsOf(d).map((w) => {
       const p = [{ swim: '수영', weight: '웨이트', cardio: '유산소', etc: '기타', pt: 'PT 수업' }[w.type]];
       if (w.type === 'cardio' && w.kind) p.push(w.kind);
+      if ((w.type === 'weight' || w.type === 'pt') && w.parts?.length) p.push(`부위 ${w.parts.join('·')}`);
+      if (w.type === 'pt' && w.memo) p.push(`메모: ${w.memo.slice(0, 60)}`);
       if (w.type === 'etc' && w.title) p.push(w.title);
       if (w.duration) p.push(`${w.duration}분`);
       if (w.distance) p.push(w.type === 'swim' ? `${w.distance}m` : `${w.distance}km`);

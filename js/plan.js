@@ -1,5 +1,5 @@
 // 이번 주 운동 루틴 추천 (Claude, 없으면 기본 템플릿)
-import { db, today, addDays, weekStart, GOAL } from './store.js';
+import { db, today, addDays, weekStart, GOAL, workoutsOf } from './store.js';
 const equip = () => db.settings.equipment || [];
 import { ptThisWeek } from './pt.js';
 const ptDays = () => [...new Set(ptThisWeek().map((p) => DOWS[(new Date(p.date.replace(/-/g, '/')).getDay() + 6) % 7]))];
@@ -62,7 +62,7 @@ ${ptDays().length ? `• 이번 주 PT 수업: ${ptThisWeek().map((p) => `${p.da
 • 다이어트 중에는 무게 욕심 없이 지금 무게 유지가 목표. 반복수를 조금씩 늘린다.
 • 살 빼기는 식단이 핵심이라 운동을 과하게 늘리지 않는다. 꾸준히 할 수 있는 양으로.
 • 수영·유산소는 웨이트가 없는 날 위주로, 웨이트 날에 넣는다면 웨이트 뒤 짧게.
-• 이번 주에 이미 한 운동은 고려해서 남은 요일을 짜기.
+• 오늘(${today()}) 이전 요일은 실제 기록대로 두고(기록 있으면 그 운동, 없으면 rest), 오늘부터 남은 요일만 새로 짜기. 이미 한 운동(특히 PT·웨이트에서 쓴 부위)을 보고 같은 부위를 연달아 하지 않게.
 
 [최근 지난 종목별 무게] ${lastLifts()}
 
@@ -91,7 +91,13 @@ export async function generatePlan({ sample, apiKey, prefs }) {
   const out = sample
     ? await sample.json(prompt(prefs) + JSON_HINT, { modelTier: 'default' })
     : await claudeImageJSON(null, apiKey, prompt(prefs), SCHEMA);
-  return normalize(out, 'claude');
+  return { ...normalize(out, 'claude'), basedOn: weekSignature() };
+}
+
+/** 이번 주 운동 기록 상태 (추천 이후 새 기록이 생겼는지 비교용) */
+export function weekSignature() {
+  const ws = weekStart(today());
+  return Array.from({ length: 7 }, (_, i) => workoutsOf(addDays(ws, i)).map((w) => w.id)).flat().sort().join(',');
 }
 
 function normalize(out, source) {
@@ -144,7 +150,7 @@ export function templatePlan(prefs) {
     const kind = kinds.includes('천국의계단') ? '천국의계단' : '걷기';
     return { dow, type: 'cardio', title: '유산소', kind, duration: Math.min(prefs.minutes, 45), items: [{ name: kind, detail: '대화는 가능하지만 노래는 힘든 강도로' }] };
   });
-  return normalize({ days, summary: '기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아 보세요.', tips: ['웨이트는 하루 이상 쉬고 다시 해요.', '다이어트 중엔 무게 유지, 반복수만 조금씩 늘려요.'] }, 'template');
+  return { basedOn: weekSignature(), ...normalize({ days, summary: '기본 루틴이에요. Claude를 쓸 수 있으면 내 기록에 맞춘 루틴을 받아 보세요.', tips: ['웨이트는 하루 이상 쉬고 다시 해요.', '다이어트 중엔 무게 유지, 반복수만 조금씩 늘려요.'] }, 'template') };
 }
 
 /** 추천 → 운동 기록 화면 미리 채우기 */
