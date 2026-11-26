@@ -39,25 +39,37 @@ export function streak() {
   return n;
 }
 
+/** 평균 낼 주: 끝난 주들(기록이 있으면), 아니면 진행 중인 이번 주 */
+export function avgBase(weeks) {
+  const done = weeks.slice(0, -1);
+  if (done.some((w) => w.ws.length)) {
+    const from = done.findIndex((w) => w.ws.length); // 기록 시작 전 빈 주는 빼기
+    return { base: done.slice(from), label: '' };
+  }
+  return { base: weeks.slice(-1), label: '지난주 기록이 없어서 이번 주(진행 중) 기준으로 봤어요.' };
+}
+
 export function comments(weeks) {
   const pts = [];
   const add = (color, html) => pts.push({ color, html });
-  const done = weeks.slice(0, -1).length ? weeks.slice(0, -1) : weeks; // 지난 주들 (이번 주는 진행 중)
-  const avgMin = sum(done, (w) => w.minutes) / done.length;
-  const avgDays = sum(done, (w) => w.days) / done.length;
-  const avgWeight = sum(done, (w) => w.weight) / done.length;
+  const { base, label } = avgBase(weeks);
+  const avgMin = sum(base, (w) => w.minutes) / base.length;
+  const avgDays = sum(base, (w) => w.days) / base.length;
+  const avgWeight = sum(base, (w) => w.weight) / base.length;
   const all = weeks.flatMap((w) => w.ws);
+  if (all.length && label) add('#8a9099', label);
+  const P = label ? '이번 주' : '주 평균';
 
   if (!all.length) { add('#8a9099', '아직 이 기간에 운동 기록이 없어요. 기록이 쌓이면 분석이 보여요.'); return pts; }
 
-  if (avgMin >= 150) add('#3bb98a', `주 평균 <b>${Math.round(avgMin)}분</b> 운동 — 권장량(주 150분 이상)을 채우고 있어요 👍`);
-  else add('#f2a33a', `주 평균 <b>${Math.round(avgMin)}분</b> 운동 — 권장량(주 150분)까지 주 <b>${Math.round(150 - avgMin)}분</b> 더 필요해요.`);
-  add('#2f3640', `주 평균 <b>${avgDays.toFixed(1)}일</b> 운동했어요.`);
+  if (avgMin >= 150) add('#3bb98a', `${P} <b>${Math.round(avgMin)}분</b> 운동 — 권장량(주 150분 이상)을 채우고 있어요 👍`);
+  else add('#f2a33a', `${P} <b>${Math.round(avgMin)}분</b> 운동 — 권장량(주 150분)까지 <b>${Math.round(150 - avgMin)}분</b> 더 필요해요.`);
+  add('#2f3640', `${P} <b>${label ? avgDays.toFixed(0) : avgDays.toFixed(1)}일</b> 운동했어요.`);
 
   const smm = inbodySorted().filter((r) => r.smm != null);
   const smmDrop = smm.length >= 2 && smm[smm.length - 1].smm < smm[smm.length - 2].smm - 0.2;
-  if (avgWeight < 2) add(smmDrop ? '#f0506e' : '#f2a33a', `근력 운동이 주 평균 <b>${avgWeight.toFixed(1)}회</b>예요. 다이어트 중 근손실을 막으려면 주 2회 이상이 좋아요.${smmDrop ? ' 최근 인바디에서 골격근도 줄었어요.' : ''}`);
-  else add('#3bb98a', `근력 운동 주 평균 <b>${avgWeight.toFixed(1)}회</b> — 근육 지키기에 충분해요.`);
+  if (avgWeight < 2) add(smmDrop ? '#f0506e' : '#f2a33a', `근력 운동(웨이트·PT)이 ${P} <b>${label ? avgWeight.toFixed(0) : avgWeight.toFixed(1)}회</b>예요. 다이어트 중 근손실을 막으려면 주 2회 이상이 좋아요.${smmDrop ? ' 최근 인바디에서 골격근도 줄었어요.' : ''}`);
+  else add('#3bb98a', `근력 운동(웨이트·PT) ${P} <b>${label ? avgWeight.toFixed(0) : avgWeight.toFixed(1)}회</b> — 근육 지키기에 충분해요.`);
 
   const st = streak();
   if (st >= 2) add('#4a7bf7', `<b>${st}일 연속</b> 운동 중이에요!`);

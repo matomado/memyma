@@ -15,7 +15,7 @@ import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel, fillMacros } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
 import { evaluateDay, recommendMeal, weeklyReview } from './meal-coach.js';
-import { weeklyStats, swimPaces, comments, coachPrompt } from './workout-analysis.js';
+import { weeklyStats, swimPaces, comments, coachPrompt, avgBase } from './workout-analysis.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
   fileToImage, imageToJpeg, analyzeWithClaude, analyzeWithOCR, sampleImageReady, sampleReady, analyzeWithSample, claudeText, dataUrlToBlob,
@@ -864,7 +864,7 @@ function renderWorkout() {
   $view.appendChild(h(`<div class="card"><h2>이번 주 운동 <small>${fmtShort(days[0])} ~ ${fmtShort(days[6])}</small></h2>
     <div class="grid3">
       <div class="stat"><div class="k">🏊 수영</div><div class="v">${by('swim').length}<small>회</small></div><div class="d muted">${kc(sum(by('swim'), 'distance'))}m</div></div>
-      <div class="stat"><div class="k">🏋️ 웨이트</div><div class="v">${by('weight').length}<small>회</small></div><div class="d muted">${kc(sum(by('weight'), 'duration'))}분</div></div>
+      <div class="stat"><div class="k">🏋️ 웨이트·PT</div><div class="v">${by('weight').length + by('pt').length}<small>회</small></div><div class="d muted">${kc(sum([...by('weight'), ...by('pt')], 'duration'))}분${by('pt').length ? ` · PT ${by('pt').length}` : ''}</div></div>
       <div class="stat"><div class="k">🏃 유산소</div><div class="v">${by('cardio').length}<small>회</small></div><div class="d muted">${nf(sum(by('cardio'), 'distance'))}km</div></div>
     </div>
     <div class="row between small" style="margin-top:10px"><span>총 ${kc(sum(all, 'duration'))}분 · ${new Set(all.map((w) => w.date)).size}일 운동</span><b>${kc(sum(all, 'kcal'))} kcal</b></div>
@@ -886,7 +886,7 @@ function renderWorkoutAnalysis() {
   const tot = (k) => weeks.reduce((a, w) => a + w[k], 0);
   card.appendChild(h(`<div class="grid2" style="margin-top:12px">
     <div class="stat"><div class="k">🏊 수영</div><div class="v">${tot('swim')}<small>회 · ${kc(tot('swimM'))}m</small></div></div>
-    <div class="stat"><div class="k">🏋️ 웨이트</div><div class="v">${tot('weight')}<small>회</small></div></div>
+    <div class="stat"><div class="k">🏋️ 웨이트·PT</div><div class="v">${tot('weight')}<small>회${tot('pt') ? ` · PT ${tot('pt')}` : ''}</small></div></div>
     <div class="stat"><div class="k">🏃 유산소</div><div class="v">${tot('cardio')}<small>회 · ${nf(tot('cardioKm'))}km</small></div></div>
     <div class="stat"><div class="k">총 소모</div><div class="v">${kc(tot('kcal'))}<small>kcal</small></div></div>
   </div>`));
@@ -901,8 +901,9 @@ function renderWorkoutAnalysis() {
     card.appendChild(h(`<h3 style="margin-top:14px">운동 평균 심박수 <small class="muted">(bpm)</small></h3>`));
     card.appendChild(lineChart(hrs.slice(-10).map((w) => ({ x: fmtShort(w.date), value: w.avgHr, tip: `${w.date.slice(2).replace(/-/g, '.')} ${TYPE[w.type].label}` })), { unit: 'bpm', decimals: 0, colorFor: () => '#f0506e' }));
   }
-  const avgMin = Math.round(weeks.slice(0, -1).reduce((a, w) => a + w.minutes, 0) / Math.max(1, weeks.length - 1));
-  $view.appendChild(foldify(card, 'wo-analysis', `주 평균 ${avgMin}분 · 권장 150분 · 주별 그래프`));
+  const ab = avgBase(weeks);
+  const avgMin = Math.round(ab.base.reduce((a, w) => a + w.minutes, 0) / ab.base.length);
+  $view.appendChild(foldify(card, 'wo-analysis', `${ab.label ? '이번 주 ' : '주 평균 '}${avgMin}분 · 권장 150분 · 주별 그래프`));
 
   // Claude 코치
   const coach = h(`<div class="card"><h2>🤖 Claude 코치</h2>
