@@ -14,7 +14,7 @@ import { ROUTINE, ROUTINE_NAMES, repsList, setVolume, setText, lastKg, altsOf, p
 import { lineChart, barChart } from './chart.js';
 import { analyzeFoodPhoto, analyzeFoodText, analyzeLabel, fillMacros } from './food-photo.js';
 import { analyzeWatch } from './watch.js';
-import { evaluateDay, recommendMeal, weeklyReview } from './meal-coach.js';
+import { evaluateDay, recommendMeal, weeklyReview, askCraving } from './meal-coach.js';
 import { weeklyStats, swimPaces, comments, coachPrompt, avgBase } from './workout-analysis.js';
 import {
   METRICS, METRIC, colorFor, standardRange, analyze,
@@ -390,20 +390,22 @@ function mealCoachCard(d) {
     ui.mcSlot = main.slice(lastIdx + 1).find((k) => !(meals[k] || []).length) || 'snack';
     ui.mcSlotDate = d;
   }
-  const key = mode === 'week' ? 'week:' + today() : mode === 'rec' ? `rec:${d}:${ui.mcSlot}` : `eval:${d}`;
+  const key = mode === 'week' ? 'week:' + today() : mode === 'rec' ? `rec:${d}:${ui.mcSlot}` : mode === 'ask' ? `ask:${d}` : `eval:${d}`;
   const res = ui.mc[key];
   const card = h(`<div class="card"><h2>🤖 식단 코치</h2>
-    <div class="seg mc-mode">${[['eval', isToday ? '오늘 평가' : '이날 평가'], ['rec', '끼니 추천'], ['week', '7일 점검']].map(([m, l]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${l}</button>`).join('')}</div>
-    ${mode === 'rec' ? `<div class="pills" style="margin-top:10px">${MEAL_SLOTS.map(([k, l]) => `<button type="button" class="pill ${ui.mcSlot === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="seg mc-mode">${[['eval', '평가'], ['ask', '🍗 먹고싶어'], ['rec', '끼니 추천'], ['week', '7일 점검']].map(([m, l]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${mode === 'ask' ? `<textarea class="crave" rows="2" style="margin-top:10px" placeholder="예: 치킨 먹고 싶어요 / 떡볶이 먹어도 돼요? / 단 게 당겨요">${esc(ui.mcAsk || '')}</textarea>` : ''}
+    ${mode === 'rec' || mode === 'ask' ? `<div class="pills" style="margin-top:10px">${MEAL_SLOTS.map(([k, l]) => `<button type="button" class="pill ${ui.mcSlot === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join('')}</div>` : ''}
     <div class="mc-out" style="margin-top:12px"></div>
-    <button class="btn primary block go">${res ? '다시 받기' : mode === 'eval' ? '평가 받기' : mode === 'rec' ? '추천 받기' : '점검 받기'}</button></div>`);
+    <button class="btn primary block go">${mode === 'ask' ? '🤖 물어보기' : res ? '다시 받기' : mode === 'eval' ? '평가 받기' : mode === 'rec' ? '추천 받기' : '점검 받기'}</button></div>`);
   card.querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { ui.mcMode = b.dataset.m; rerender(); }));
   card.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { ui.mcSlot = b.dataset.s; rerender(); }));
+  card.querySelector('.crave')?.addEventListener('input', (e) => (ui.mcAsk = e.target.value)); // 끼니를 바꿔도 적은 글 유지
   const out = card.querySelector('.mc-out');
   const draw = (r) => {
     out.innerHTML = '';
     if (!r) {
-      out.appendChild(h(`<p class="small muted" style="margin:0">${mode === 'eval' ? '이날 먹은 걸 보고 점수와 잘한 점·고칠 점을 알려줘요.' : mode === 'rec' ? '남은 칼로리와 자주 먹는 음식을 보고 조합을 추천해요. 고르면 바로 추가돼요.' : '최근 7일 식단 패턴을 체중 변화와 함께 점검해요.'}</p>`));
+      out.appendChild(h(`<p class="small muted" style="margin:0">${mode === 'ask' ? '먹고 싶은 걸 적으면 오늘 먹은 양과 남은 칼로리를 보고, 먹어도 될지·얼마나 먹을지·대안을 알려줘요. 위에서 어느 끼니에 먹을지 골라 주세요.' : mode === 'eval' ? '이날 먹은 걸 보고 점수와 잘한 점·고칠 점을 알려줘요.' : mode === 'rec' ? '남은 칼로리와 자주 먹는 음식을 보고 조합을 추천해요. 고르면 바로 추가돼요.' : '최근 7일 식단 패턴을 체중 변화와 함께 점검해요.'}</p>`));
       return;
     }
     if (r.error) { out.appendChild(h(`<p class="small up" style="margin:0">${esc(r.error)}</p>`)); return; }
@@ -412,10 +414,11 @@ function mealCoachCard(d) {
       out.appendChild(h(`<div class="row" style="gap:12px;align-items:center;margin-bottom:8px"><div class="score" style="border-color:${c};color:${c}">${r.score}</div><div class="grow small">${esc(r.summary)}</div></div>`));
       r.good.forEach((t) => out.appendChild(h(`<div class="pt small"><span class="dot" style="background:#3bb98a"></span><div>${esc(t)}</div></div>`)));
       r.fix.forEach((t) => out.appendChild(h(`<div class="pt small"><span class="dot" style="background:#f2a33a"></span><div>${esc(t)}</div></div>`)));
-    } else if (mode === 'rec') {
+    } else if (mode === 'rec' || mode === 'ask') {
       const slotLabel = MEAL_SLOTS.find(([k]) => k === ui.mcSlot)[1];
-      if (r.note) out.appendChild(h(`<p class="small muted" style="margin:0 0 8px">${esc(r.note)}</p>`));
-      if (!r.options.length) out.appendChild(h(`<p class="small up">추천을 만들지 못했어요. 다시 받아 주세요.</p>`));
+      if (r.q) out.appendChild(h(`<p class="small" style="margin:0 0 6px"><b>Q.</b> ${esc(r.q)}</p>`));
+      if (r.note) out.appendChild(h(`<p class="small ${r.isAsk ? '' : 'muted'}" style="margin:0 0 8px;line-height:1.6">${esc(r.note)}</p>`));
+      if (!r.options.length && !r.isAsk) out.appendChild(h(`<p class="small up">추천을 만들지 못했어요. 다시 받아 주세요.</p>`));
       r.options.forEach((o) => {
         const tot = o.items.reduce((a, x) => a + x.kcal, 0);
         const box = h(`<div class="rec-opt"><div class="row between"><b>${esc(o.title)}</b><span class="small" style="font-weight:700">${kc(tot)}kcal</span></div>
@@ -446,6 +449,12 @@ function mealCoachCard(d) {
       let r;
       if (mode === 'eval') r = await evaluateDay(ai, d, groupsOf);
       else if (mode === 'rec') r = await recommendMeal(ai, d, ui.mcSlot, groupsOf);
+      else if (mode === 'ask') {
+        const q = (btn.parentElement.querySelector('.crave')?.value || ui.mcAsk || '').trim();
+        if (!q) { btn.disabled = false; btn.textContent = '🤖 물어보기'; return toast('먹고 싶은 걸 적어 주세요'); }
+        ui.mcAsk = q;
+        r = { ...(await askCraving(ai, d, ui.mcSlot, q, groupsOf)), q };
+      }
       else {
         const live = h(`<div class="small" style="white-space:pre-wrap;line-height:1.65"></div>`);
         out.innerHTML = ''; out.appendChild(live);
@@ -458,10 +467,10 @@ function mealCoachCard(d) {
       draw({ error: err?.code === 'rate_limited' ? '지금은 Claude 사용량이 많아요. 잠시 후 다시 눌러 주세요.' : err?.code === 'not_granted' ? 'Claude 사용을 허용해야 쓸 수 있어요.' : err?.code === 'invalid_json' ? '답을 제대로 받지 못했어요. 다시 눌러 주세요.' : '받지 못했어요: ' + (err?.message || err) });
     }
     btn.disabled = false;
-    btn.textContent = '다시 받기';
+    btn.textContent = mode === 'ask' ? '🤖 물어보기' : '다시 받기';
   };
   const evalRes = ui.mc[`eval:${d}`];
-  return foldify(card, 'meal-coach', evalRes && !evalRes.error ? `${isToday ? '오늘' : '이날'} ${evalRes.score}점 · 끼니 추천 · 7일 점검` : `${isToday ? '오늘' : '이날'} 평가 · 다음 끼니 추천 · 7일 점검`);
+  return foldify(card, 'meal-coach', evalRes && !evalRes.error ? `${isToday ? '오늘' : '이날'} ${evalRes.score}점 · 먹고 싶은 거 물어보기 · 끼니 추천` : '평가 · 먹고 싶은 거 물어보기 · 끼니 추천 · 7일 점검');
 }
 
 function foodUseCount() {

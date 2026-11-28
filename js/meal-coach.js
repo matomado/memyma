@@ -141,3 +141,41 @@ ${lines}
   if (ai.sample) return (await ai.sample(prompt, { modelTier: 'default', cache: false, onText: ({ text }) => onText?.(text) })).text;
   return claudeText(ai.apiKey, prompt);
 }
+
+/* ---------- 4. "이거 먹고 싶어요" 상담 ---------- */
+const ASK_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['answer', 'options'],
+  properties: { answer: { type: 'string' }, options: REC_SCHEMA.properties.options },
+};
+export async function askCraving(ai, d, slot, text, groupsOf) {
+  const slotLabel = MEAL_SLOTS.find(([k]) => k === slot)[1];
+  const left = db.settings.kcalTarget - intakeOf(d);
+  const prompt = `당신은 다정하지만 현실적인 다이어트 식단 코치입니다. 이 사람이 "${text.replace(/"/g, "'").slice(0, 300)}" 라고 했어요. ${slotLabel}에 먹을 생각이에요. 답해 주세요.
+
+${principles()}
+
+[오늘(${d}) 지금까지] ${intakeOf(d)}kcal 먹음, 남은 칼로리 ${left}kcal
+${dayText(d, groupsOf)}
+
+[체중 추세] ${weightLine() || '기록 부족'}
+
+[자주 먹는 음식]
+${library() || '(없음)'}
+
+규칙:
+• 무조건 참으라고 하지 마세요. 먹고 싶은 걸 완전히 막으면 오래 못 가요. 남은 칼로리 안에서 먹을 수 있으면 "드셔도 돼요"라고 하고 적당한 양(예: 치킨 2~3조각)을 숫자로 알려주세요. 넘치면 양을 줄이거나, 오늘 다른 끼니·내일에서 몇 kcal 줄이면 되는지 알려주세요.
+• answer: 3~5문장, 한국어 존댓말, 마크다운 없이. 그 음식의 대략적인 kcal 를 꼭 넣기.
+• options: 1~3개. 첫 번째는 "원하는 그 음식을 적당량" 먹는 조합(가능하면 섬유질 곁들이기), 나머지는 비슷한 만족감의 가벼운 대안. 각 음식 kcal·g 은 한국 일반 기준 추정, 자주 먹는 음식이면 foodId.
+• 음식 얘기가 아니면 answer 에 짧게 답하고 options 는 빈 배열.`;
+  const out = await askJSON(ai, prompt, ASK_SCHEMA, '{"answer": "...", "options": [{"title": "...", "why": "...", "items": [{"foodId": "id 또는 null", "name": "...", "amount": 숫자, "unit": "...", "kcal": 숫자, "groups": ["carb"]}]}]}');
+  const ids = new Set(db.foods.map((f) => f.id));
+  const options = (out?.options || []).slice(0, 3).map((o) => ({
+    title: String(o.title || '').slice(0, 40), why: String(o.why || ''),
+    items: (o.items || []).filter((x) => x && x.name && isFinite(+x.kcal)).map((x) => ({
+      foodId: ids.has(x.foodId) ? x.foodId : null, name: String(x.name).slice(0, 40),
+      amount: +x.amount > 0 ? +x.amount : 1, unit: String(x.unit || '인분').slice(0, 16), kcal: Math.max(0, Math.round(+x.kcal)),
+      groups: Array.isArray(x.groups) ? x.groups.filter((g) => GL[g]) : [],
+    })),
+  })).filter((o) => o.items.length);
+  return { note: String(out?.answer || ''), options, isAsk: true };
+}
